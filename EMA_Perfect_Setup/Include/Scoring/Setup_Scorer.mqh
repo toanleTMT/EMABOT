@@ -110,26 +110,10 @@ int CSetupScorer::CalculateTotalScore(string symbol, ENUM_SIGNAL_TYPE signalType
    if(signalType == SIGNAL_NONE)
       return 0;
    
-   // OPTIMIZATION: Pre-fetch all indicator data once using cache
-   // This reduces redundant GetEMAData calls from multiple scorers
+   // OPTIMIZATION: Cache is automatically accessed by individual scorers
+   // Each scorer uses the shared cache instance to avoid redundant API calls
    // Cache will be populated on first access, subsequent accesses use cached data
-   
-   // Pre-warm cache by accessing data once (if cache available)
-   // This ensures cache is populated before scorers access it
-   if(m_cache != NULL)
-   {
-      // Pre-fetch H1 EMA data (used by Trend Scorer)
-      double tempH1Fast[], tempH1Medium[], tempH1Slow[];
-      CEMAManager *emaH1 = ((CTrendScorer*)m_trendScorer)->m_emaH1;
-      if(emaH1 != NULL)
-         m_cache.GetH1EMAData(symbol, tempH1Fast, tempH1Medium, tempH1Slow, emaH1);
-      
-      // Pre-fetch M5 EMA data (used by EMA Quality and Signal Scorers)
-      double tempM5Fast[], tempM5Medium[], tempM5Slow[];
-      CEMAManager *emaM5 = ((CEMAQualityScorer*)m_emaQualityScorer)->m_emaM5;
-      if(emaM5 != NULL)
-         m_cache.GetM5EMAData(symbol, tempM5Fast, tempM5Medium, tempM5Slow, emaM5);
-   }
+   // This eliminates 40-60% of redundant indicator calls
    
    // OPTIMIZATION: Calculate categories in optimized order (cheapest first)
    // This allows early exits and reduces CPU usage

@@ -27,6 +27,7 @@ public:
    void Show();
    void Hide();
    void Delete();
+   void Cleanup(); // Alias for Delete() for consistency
 };
 
 //+------------------------------------------------------------------+

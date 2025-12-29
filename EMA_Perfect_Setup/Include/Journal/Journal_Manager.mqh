@@ -36,6 +36,8 @@ public:
                         string strengths, string weaknesses);
    void LogRejectedSignal(string symbol, datetime time, int score,
                           int categoryScores[], string reason);
+   void LogRejectedSignal(string symbol, datetime time, int score,
+                          string reason); // Overload for when categoryScores is NULL
    void TakeScreenshot(string symbol, datetime time);
    void ExportToCSV(datetime startDate, datetime endDate);
 };
@@ -111,7 +113,32 @@ void CJournalManager::WriteJournalEntry(string text)
    }
    else
    {
-      Print("WARNING: Failed to write journal entry. Error: ", GetLastError());
+      int error = GetLastError();
+      Print("WARNING: Failed to write journal entry. Error: ", error, " | File: ", filename);
+      
+      // Try to create directory if it doesn't exist
+      if(error == 5002) // File not found - directory might not exist
+      {
+         if(FolderCreate(m_journalPath, FILE_COMMON))
+         {
+            // Retry opening file after creating directory
+            fileHandle = FileOpen(filename, FILE_WRITE | FILE_READ | FILE_TXT | FILE_COMMON);
+            if(fileHandle != INVALID_HANDLE)
+            {
+               FileWriteString(fileHandle, text + "\n");
+               FileClose(fileHandle);
+               Print("Journal file created successfully: ", filename);
+            }
+            else
+            {
+               Print("ERROR: Still failed to create journal file after creating directory. Error: ", GetLastError());
+            }
+         }
+         else
+         {
+            Print("ERROR: Failed to create journal directory: ", m_journalPath, " | Error: ", GetLastError());
+         }
+      }
    }
 }
 
@@ -158,7 +185,7 @@ void CJournalManager::LogPerfectSignal(string symbol, datetime time, int score,
    WriteJournalEntry(logText);
    
    // CSV export
-   if(m_enableCSV)
+   if(m_enableCSV && m_csvExporter != NULL)
    {
       JournalEntry entry;
       entry.time = time;
@@ -166,7 +193,17 @@ void CJournalManager::LogPerfectSignal(string symbol, datetime time, int score,
       entry.timeframe = PERIOD_M5;
       entry.type = signalType;
       entry.totalScore = score;
-      ArrayCopy(entry.categoryScores, categoryScores);
+      
+      // Copy category scores safely
+      if(categoryScores != NULL && ArraySize(categoryScores) >= TOTAL_CATEGORIES)
+      {
+         ArrayCopy(entry.categoryScores, categoryScores);
+      }
+      else
+      {
+         ArrayInitialize(entry.categoryScores, 0);
+      }
+      
       entry.entry = entryPrice;
       entry.stopLoss = sl;
       entry.takeProfit1 = tp1;
@@ -175,6 +212,14 @@ void CJournalManager::LogPerfectSignal(string symbol, datetime time, int score,
       entry.weaknesses = weaknesses;
       entry.wasTraded = false;
       entry.wasSkipped = false;
+      entry.actualResultWin = false;
+      entry.actualResultLoss = false;
+      entry.actualResultBreakeven = false;
+      entry.actualPips = 0;
+      entry.exitTime = 0;
+      entry.notes = "";
+      entry.rejectionReason = "";
+      entry.userReason = "";
       
       if(!m_csvExporter.ExportEntry(entry))
       {
@@ -201,14 +246,21 @@ void CJournalManager::LogRejectedSignal(string symbol, datetime time, int score,
    logText += FormatDate(time) + " " + FormatDateTime(time) + " | " + symbol + " | M5\n";
    logText += "Score: " + FormatScore(score) + " - CORRECTLY SKIPPED\n";
    
-   // Add category scores breakdown
-   logText += "CATEGORY SCORES:\n";
-   logText += "- Trend: " + IntegerToString(categoryScores[CATEGORY_TREND]) + "/25\n";
-   logText += "- EMA Quality: " + IntegerToString(categoryScores[CATEGORY_EMA_QUALITY]) + "/20\n";
-   logText += "- Signal: " + IntegerToString(categoryScores[CATEGORY_SIGNAL_STRENGTH]) + "/20\n";
-   logText += "- Confirmation: " + IntegerToString(categoryScores[CATEGORY_CONFIRMATION]) + "/15\n";
-   logText += "- Market: " + IntegerToString(categoryScores[CATEGORY_MARKET]) + "/10\n";
-   logText += "- Context: " + IntegerToString(categoryScores[CATEGORY_CONTEXT]) + "/10\n\n";
+   // Add category scores breakdown (if available)
+   if(categoryScores != NULL && ArraySize(categoryScores) >= TOTAL_CATEGORIES)
+   {
+      logText += "CATEGORY SCORES:\n";
+      logText += "- Trend: " + IntegerToString(categoryScores[CATEGORY_TREND]) + "/25\n";
+      logText += "- EMA Quality: " + IntegerToString(categoryScores[CATEGORY_EMA_QUALITY]) + "/20\n";
+      logText += "- Signal: " + IntegerToString(categoryScores[CATEGORY_SIGNAL_STRENGTH]) + "/20\n";
+      logText += "- Confirmation: " + IntegerToString(categoryScores[CATEGORY_CONFIRMATION]) + "/15\n";
+      logText += "- Market: " + IntegerToString(categoryScores[CATEGORY_MARKET]) + "/10\n";
+      logText += "- Context: " + IntegerToString(categoryScores[CATEGORY_CONTEXT]) + "/10\n\n";
+   }
+   else
+   {
+      logText += "Score: " + IntegerToString(score) + "/100\n\n";
+   }
    
    logText += "WHY REJECTED:\n" + reason + "\n";
    logText += "DECISION: ✓ Correctly avoided weak setup\n";
@@ -217,7 +269,7 @@ void CJournalManager::LogRejectedSignal(string symbol, datetime time, int score,
    WriteJournalEntry(logText);
    
    // CSV export for rejected signals (if enabled)
-   if(m_enableCSV)
+   if(m_enableCSV && m_csvExporter != NULL)
    {
       JournalEntry entry;
       entry.time = time;
@@ -225,7 +277,17 @@ void CJournalManager::LogRejectedSignal(string symbol, datetime time, int score,
       entry.timeframe = PERIOD_M5;
       entry.type = SIGNAL_NONE; // No signal type for rejected
       entry.totalScore = score;
-      ArrayCopy(entry.categoryScores, categoryScores);
+      
+      // Copy category scores if available
+      if(categoryScores != NULL && ArraySize(categoryScores) >= TOTAL_CATEGORIES)
+      {
+         ArrayCopy(entry.categoryScores, categoryScores);
+      }
+      else
+      {
+         ArrayInitialize(entry.categoryScores, 0);
+      }
+      
       entry.entry = 0;
       entry.stopLoss = 0;
       entry.takeProfit1 = 0;
@@ -234,6 +296,12 @@ void CJournalManager::LogRejectedSignal(string symbol, datetime time, int score,
       entry.weaknesses = reason;
       entry.wasTraded = false;
       entry.wasSkipped = true;
+      entry.actualResultWin = false;
+      entry.actualResultLoss = false;
+      entry.actualResultBreakeven = false;
+      entry.actualPips = 0;
+      entry.exitTime = 0;
+      entry.notes = "";
       
       if(!m_csvExporter.ExportEntry(entry))
       {
@@ -243,15 +311,39 @@ void CJournalManager::LogRejectedSignal(string symbol, datetime time, int score,
 }
 
 //+------------------------------------------------------------------+
+//| Log rejected signal (overload without category scores)           |
+//+------------------------------------------------------------------+
+void CJournalManager::LogRejectedSignal(string symbol, datetime time, int score, string reason)
+{
+   // Call main function with NULL category scores
+   LogRejectedSignal(symbol, time, score, NULL, reason);
+}
+
+//+------------------------------------------------------------------+
 //| Take screenshot                                                  |
 //+------------------------------------------------------------------+
 void CJournalManager::TakeScreenshot(string symbol, datetime time)
 {
+   // Sanitize filename - remove invalid characters
    string filename = SCREENSHOT_PREFIX + symbol + "_" + FormatDate(time) + "_" + FormatDateTime(time);
    filename = StringReplace(filename, ":", "");
    filename = StringReplace(filename, " ", "_");
+   filename = StringReplace(filename, "/", "-");
+   filename = StringReplace(filename, "\\", "-");
    
-   ChartScreenShot(0, m_journalPath + "\\" + filename + ".png", 800, 600, ALIGN_LEFT);
+   // Build full path
+   string fullPath = m_journalPath + "\\" + filename + ".png";
+   
+   // Take screenshot
+   if(ChartScreenShot(0, fullPath, 800, 600, ALIGN_LEFT))
+   {
+      Print("Screenshot saved: ", fullPath);
+   }
+   else
+   {
+      int error = GetLastError();
+      Print("WARNING: Failed to take screenshot. Error: ", error, " | Path: ", fullPath);
+   }
 }
 
 //+------------------------------------------------------------------+

@@ -235,12 +235,16 @@ int OnInit()
       g_rsi.Initialize(g_symbols, InpSignalTF, InpRSI_Period);
    }
    
-   // Initialize scorer
+   // Initialize performance optimization cache
+   g_scoreCache = new CScoreCache(1); // 1 second cache timeout
+   
+   // Initialize scorer (with shared cache for performance)
    g_scorer = new CSetupScorer(g_emaH1, g_emaM5, g_rsi,
                                InpMinH1Distance, InpMinEMASeparation, InpMinCandleBody,
                                InpMaxSpread,
                                InpWeight_Trend, InpWeight_EMAQuality, InpWeight_SignalStrength,
-                               InpWeight_Confirmation, InpWeight_Market, InpWeight_Context);
+                               InpWeight_Confirmation, InpWeight_Market, InpWeight_Context,
+                               g_scoreCache); // Pass shared cache for performance
    
    // Initialize analyzer
    g_analyzer = new CSetupAnalyzer(InpMinScoreAlert);
@@ -361,14 +365,56 @@ void OnDeinit(const int reason)
          Print(g_perfMonitor.GetPerformanceReport());
       delete g_perfMonitor;
    }
-   if(g_dashboard != NULL) { g_dashboard.Delete(); delete g_dashboard; }
-   if(g_arrowManager != NULL) { g_arrowManager.DeleteAllArrows(); delete g_arrowManager; }
-   if(g_labelManager != NULL) { g_labelManager.DeleteAllLabels(); delete g_labelManager; }
-   if(g_panelManager != NULL) { g_panelManager.Delete(); delete g_panelManager; }
-   if(g_alertManager != NULL) delete g_alertManager;
-   if(g_journal != NULL) delete g_journal;
+   // OPTIMIZATION: Cleanup in reverse order of initialization
+   // Cleanup visual components first (they depend on managers)
+   if(g_dashboard != NULL) 
+   {
+      g_dashboard.Cleanup();
+      delete g_dashboard;
+      g_dashboard = NULL;
+   }
    
-   Print("=== EMA Perfect Setup Scanner EA Stopped ===");
+   if(g_arrowManager != NULL) 
+   {
+      g_arrowManager.DeleteAllArrows();
+      delete g_arrowManager;
+      g_arrowManager = NULL;
+   }
+   
+   if(g_labelManager != NULL) 
+   {
+      g_labelManager.DeleteAllLabels();
+      delete g_labelManager;
+      g_labelManager = NULL;
+   }
+   
+   if(g_panelManager != NULL) 
+   {
+      g_panelManager.Cleanup();
+      delete g_panelManager;
+      g_panelManager = NULL;
+   }
+   
+   // Cleanup cache (after scorers)
+   if(g_scoreCache != NULL)
+   {
+      delete g_scoreCache;
+      g_scoreCache = NULL;
+   }
+   
+   if(g_alertManager != NULL) 
+   {
+      delete g_alertManager;
+      g_alertManager = NULL;
+   }
+   
+   if(g_journal != NULL) 
+   {
+      delete g_journal;
+      g_journal = NULL;
+   }
+   
+   Print("=== EMA Perfect Setup Scanner EA v2.0 Stopped ===");
 }
 
 //+------------------------------------------------------------------+
@@ -403,12 +449,30 @@ void OnTimer()
       if(!IsNewBar(symbol, InpSignalTF))
          continue;
       
+      // OPTIMIZATION: Check spread early (before expensive calculations)
+      // This saves CPU by rejecting high spread setups immediately
+      double spread = GetSpreadPips(symbol);
+      if(spread > InpMaxSpread)
+      {
+         if(InpLogRejectedSetups && InpEnableJournal && g_journal != NULL)
+         {
+            string reason = "Spread too high: " + FormatPips(spread) + " (max: " + FormatPips(InpMaxSpread) + ")";
+            g_journal.LogRejectedSignal(symbol, TimeCurrent(), 0, reason);
+         }
+         continue;
+      }
+      
       // Determine signal type
       ENUM_SIGNAL_TYPE signalType = DetermineSignalType(symbol);
       if(signalType == SIGNAL_NONE)
          continue;
       
-      // Validate signal using validator
+      // Check if we already signaled on this bar (early exit optimization)
+      datetime currentBarTime = iTime(symbol, InpSignalTF, 0);
+      if(g_lastSignalTime[i] == currentBarTime)
+         continue; // Already processed this bar
+      
+      // Validate signal using validator (before expensive scoring)
       bool isValidSignal = false;
       if(signalType == SIGNAL_BUY)
          isValidSignal = g_validator.ValidateBuySignal(symbol);
@@ -422,35 +486,23 @@ void OnTimer()
             string errors = g_validator.GetValidationErrors(symbol, signalType);
             g_debug.Log("Signal validation failed for " + symbol + ": " + errors);
          }
+         if(InpLogRejectedSetups && InpEnableJournal && g_journal != NULL)
+         {
+            string errors = g_validator.GetValidationErrors(symbol, signalType);
+            g_journal.LogRejectedSignal(symbol, currentBarTime, 0, "Validation failed: " + errors);
+         }
          continue;
       }
       
-      // Check if we already signaled on this bar
-      datetime currentBarTime = iTime(symbol, InpSignalTF, 0);
-      if(g_lastSignalTime[i] == currentBarTime)
-         continue; // Already processed this bar
-      
-      // Calculate score
+      // Calculate score (most expensive operation - done last)
       int categoryScores[];
       int totalScore = g_scorer.CalculateTotalScore(symbol, signalType, categoryScores);
       
-      // Debug logging
+      // Debug logging (only if debug enabled)
       if(InpEnableDebug && g_debug != NULL)
       {
          g_debug.LogSignal(symbol, signalType, totalScore);
          g_debug.LogScoreBreakdown(symbol, totalScore, categoryScores);
-      }
-      
-      // Check spread filter (additional check)
-      double spread = GetSpreadPips(symbol);
-      if(spread > InpMaxSpread)
-      {
-         if(InpLogRejectedSetups && InpEnableJournal && g_journal != NULL)
-         {
-            string reason = "Spread too high: " + FormatPips(spread) + " (max: " + FormatPips(InpMaxSpread) + ")";
-            g_journal.LogRejectedSignal(symbol, TimeCurrent(), totalScore, categoryScores, reason);
-         }
-         continue;
       }
       
       // Calculate entry/SL/TP
@@ -470,7 +522,7 @@ void OnTimer()
          g_signalsToday++;
          g_lastSignalTime[i] = currentBarTime;
          
-         // Get strengths and weaknesses analysis
+         // OPTIMIZATION: Get strengths/weaknesses once and reuse
          string analysis = g_scorer.GetStrengthsAndWeaknesses(symbol, signalType, categoryScores);
          string strengths = "";
          string weaknesses = "";
@@ -496,26 +548,30 @@ void OnTimer()
             strengths = analysis; // If no format, use entire string as strengths
          }
          
-         // Visual
+         // OPTIMIZATION: Visual updates (only if enabled)
          if(InpShowArrows && g_arrowManager != NULL)
             g_arrowManager.DrawArrow(symbol, currentBarTime, entry, totalScore, signalType);
          
          if(InpShowLabels && g_labelManager != NULL)
          {
-            string strengths = g_scorer.GetStrengthsAndWeaknesses(symbol, signalType, categoryScores);
+            // OPTIMIZATION: Reuse strengths already calculated above
             g_labelManager.DrawDetailedLabel(symbol, currentBarTime, entry, totalScore, categoryScores, 
                                             signalType, entry, sl, tp1, tp2, strengths);
          }
          
+         // OPTIMIZATION: Dashboard update once (removed duplicate)
          if(InpShowDashboard && g_dashboard != NULL)
+         {
             g_dashboard.Update(symbol, totalScore, categoryScores, signalType, entry, sl, tp1, tp2,
                               g_perfectToday, g_goodToday, g_weakToday, spread);
+            g_dashboard.Flash(InpBuyColor, 5000);
+         }
          
          if(InpShowBreakdownPanel && g_panelManager != NULL)
+         {
+            string breakdown = g_scorer.GetScoreBreakdown(symbol, signalType, categoryScores);
             g_panelManager.Update(symbol, signalType, categoryScores, g_scorer);
-         
-         if(InpShowDashboard && g_dashboard != NULL)
-            g_dashboard.Flash(InpBuyColor, 5000);
+         }
          
          // Alerts
          if(InpAlert_Perfect && g_alertManager != NULL)
@@ -540,9 +596,10 @@ void OnTimer()
       }
       else if(g_analyzer.IsGoodSetup(totalScore) && InpShowGoodSetups)
       {
-         // Good setup
+         // Good setup (70-84 points)
          g_goodToday++;
          
+         // OPTIMIZATION: Visual updates only if enabled
          if(InpShowArrows && g_arrowManager != NULL)
             g_arrowManager.DrawArrow(symbol, currentBarTime, entry, totalScore, signalType);
          
@@ -557,9 +614,10 @@ void OnTimer()
       }
       else if(g_analyzer.IsWeakSetup(totalScore) && InpShowWeakSetups)
       {
-         // Weak setup
+         // Weak setup (50-69 points)
          g_weakToday++;
          
+         // OPTIMIZATION: Visual updates only if enabled
          if(InpShowArrows && g_arrowManager != NULL)
             g_arrowManager.DrawArrow(symbol, currentBarTime, entry, totalScore, signalType);
          
@@ -571,29 +629,29 @@ void OnTimer()
       }
       else
       {
-         // Invalid - rejected
+         // Invalid - rejected (<50 points)
          if(InpLogRejectedSetups && InpEnableJournal && g_journal != NULL)
          {
             string reason = g_analyzer.GetRejectionReason(symbol, totalScore, categoryScores);
             g_journal.LogRejectedSignal(symbol, currentBarTime, totalScore, categoryScores, reason);
          }
       }
-      
-      // Update dashboard periodically
-      if(InpShowDashboard && g_dashboard != NULL)
-      {
-         g_dashboard.Update(symbol, totalScore, categoryScores, signalType, entry, sl, tp1, tp2,
-                           g_perfectToday, g_goodToday, g_weakToday, spread);
-      }
    }
    
-   // Cleanup old visual objects periodically
-   if(g_arrowManager != NULL)
-      g_arrowManager.CleanupOldArrows(50);
-   if(g_labelManager != NULL)
-      g_labelManager.CleanupOldLabels(20);
+   // OPTIMIZATION: Cleanup operations (done once per timer cycle, not per symbol)
+   // Cleanup old visual objects periodically (every 10 cycles = ~2.5 minutes at 15s interval)
+   static int cleanupCounter = 0;
+   cleanupCounter++;
+   if(cleanupCounter >= 10)
+   {
+      cleanupCounter = 0;
+      if(g_arrowManager != NULL)
+         g_arrowManager.CleanupOldArrows(3600); // Cleanup arrows older than 1 hour
+      if(g_labelManager != NULL)
+         g_labelManager.CleanupOldLabels(3600); // Cleanup labels older than 1 hour
+   }
    
-   // Check dashboard flash restoration
+   // OPTIMIZATION: Dashboard flash restoration (check once per cycle)
    if(InpShowDashboard && g_dashboard != NULL)
       g_dashboard.CheckFlashRestore();
 }

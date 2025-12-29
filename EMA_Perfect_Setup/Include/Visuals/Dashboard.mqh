@@ -37,6 +37,7 @@ public:
    void Show();
    void Hide();
    void Delete();
+   void Cleanup(); // Alias for Delete() for consistency
 };
 
 //+------------------------------------------------------------------+
@@ -403,6 +404,14 @@ void CDashboard::Delete()
          ObjectDelete(0, name);
    }
    ChartRedraw();
+}
+
+//+------------------------------------------------------------------+
+//| Cleanup dashboard (alias for Delete)                             |
+//+------------------------------------------------------------------+
+void CDashboard::Cleanup()
+{
+   Delete();
 }
 
 //+------------------------------------------------------------------+
