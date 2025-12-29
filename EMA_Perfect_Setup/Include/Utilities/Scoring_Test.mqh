@@ -23,8 +23,19 @@
 //+------------------------------------------------------------------+
 class CScoringTest
 {
+private:
+   static int m_testsPassed;
+   static int m_testsFailed;
+   static int m_testsTotal;
+   
 public:
+   // Quick verification test (simple pass/fail)
+   static bool QuickTest(CEMAManager *emaH1, CEMAManager *emaM5, CRSIManager *rsi, string symbol = "");
+   
+   // Comprehensive test suite
    static void RunAllTests(CEMAManager *emaH1, CEMAManager *emaM5, CRSIManager *rsi);
+   
+   // Individual test functions
    static void TestTrendScoring(CEMAManager *emaH1, string symbol);
    static void TestEMAQualityScoring(CEMAManager *emaM5, string symbol);
    static void TestSignalScoring(CEMAManager *emaM5, CEMAManager *emaH1, string symbol);
@@ -36,6 +47,11 @@ public:
    static void TestStrengthsAndWeaknesses(CSetupScorer *scorer, string symbol);
    static void TestScoreValidation(CSetupScorer *scorer, string symbol);
    static void TestEdgeCases(CSetupScorer *scorer, string symbol);
+   
+   // Helper functions
+   static void ResetTestCounters();
+   static void PrintTestSummary();
+   static bool VerifyScoreRange(int score, int min, int max, string testName);
 };
 
 //+------------------------------------------------------------------+
@@ -125,6 +141,301 @@ void CScoringTest::RunAllTests(CEMAManager *emaH1, CEMAManager *emaM5, CRSIManag
    Print("\n╔═══════════════════════════════════════════════════════════╗");
    Print("║          ALL TESTS COMPLETED                             ║");
    Print("╚═══════════════════════════════════════════════════════════╝\n");
+   
+   PrintTestSummary();
+}
+
+//+------------------------------------------------------------------+
+//| Quick Test - Simple verification that scoring system works       |
+//+------------------------------------------------------------------+
+bool CScoringTest::QuickTest(CEMAManager *emaH1, CEMAManager *emaM5, CRSIManager *rsi, string symbol)
+{
+   Print("\n╔═══════════════════════════════════════════════════════════╗");
+   Print("║          QUICK SCORING SYSTEM TEST                       ║");
+   Print("╚═══════════════════════════════════════════════════════════╝\n");
+   
+   ResetTestCounters();
+   
+   // Use provided symbol or current chart symbol
+   if(StringLen(symbol) == 0)
+      symbol = Symbol();
+   
+   if(StringLen(symbol) == 0)
+   {
+      Print("✗ FAIL: No symbol available for testing!");
+      return false;
+   }
+   
+   Print("Testing symbol: ", symbol, "\n");
+   
+   bool allPassed = true;
+   
+   // Test 1: Verify managers are initialized
+   Print("TEST 1: Manager Initialization");
+   Print("─────────────────────────────────────────────────────────────");
+   if(emaH1 == NULL)
+   {
+      Print("✗ FAIL: EMA H1 manager is NULL");
+      allPassed = false;
+      m_testsFailed++;
+   }
+   else
+   {
+      Print("✓ PASS: EMA H1 manager initialized");
+      m_testsPassed++;
+   }
+   m_testsTotal++;
+   
+   if(emaM5 == NULL)
+   {
+      Print("✗ FAIL: EMA M5 manager is NULL");
+      allPassed = false;
+      m_testsFailed++;
+   }
+   else
+   {
+      Print("✓ PASS: EMA M5 manager initialized");
+      m_testsPassed++;
+   }
+   m_testsTotal++;
+   
+   if(rsi == NULL)
+   {
+      Print("✗ FAIL: RSI manager is NULL");
+      allPassed = false;
+      m_testsFailed++;
+   }
+   else
+   {
+      Print("✓ PASS: RSI manager initialized");
+      m_testsPassed++;
+   }
+   m_testsTotal++;
+   
+   // Test 2: Verify indicator data retrieval
+   Print("\nTEST 2: Indicator Data Retrieval");
+   Print("─────────────────────────────────────────────────────────────");
+   
+   double emaFastH1[], emaMediumH1[], emaSlowH1[];
+   if(!emaH1.GetEMAData(symbol, emaFastH1, emaMediumH1, emaSlowH1))
+   {
+      Print("✗ FAIL: Cannot retrieve H1 EMA data");
+      allPassed = false;
+      m_testsFailed++;
+   }
+   else
+   {
+      Print("✓ PASS: H1 EMA data retrieved successfully");
+      Print("  EMA 9: ", DoubleToString(emaFastH1[0], 5));
+      Print("  EMA 21: ", DoubleToString(emaMediumH1[0], 5));
+      Print("  EMA 50: ", DoubleToString(emaSlowH1[0], 5));
+      m_testsPassed++;
+   }
+   m_testsTotal++;
+   
+   double emaFastM5[], emaMediumM5[], emaSlowM5[];
+   if(!emaM5.GetEMAData(symbol, emaFastM5, emaMediumM5, emaSlowM5))
+   {
+      Print("✗ FAIL: Cannot retrieve M5 EMA data");
+      allPassed = false;
+      m_testsFailed++;
+   }
+   else
+   {
+      Print("✓ PASS: M5 EMA data retrieved successfully");
+      Print("  EMA 9: ", DoubleToString(emaFastM5[0], 5));
+      Print("  EMA 21: ", DoubleToString(emaMediumM5[0], 5));
+      Print("  EMA 50: ", DoubleToString(emaSlowM5[0], 5));
+      m_testsPassed++;
+   }
+   m_testsTotal++;
+   
+   double rsiValue = 50.0;
+   if(!rsi.GetRSIValue(symbol, rsiValue))
+   {
+      Print("✗ FAIL: Cannot retrieve RSI data");
+      allPassed = false;
+      m_testsFailed++;
+   }
+   else
+   {
+      Print("✓ PASS: RSI data retrieved successfully");
+      Print("  RSI: ", DoubleToString(rsiValue, 2));
+      m_testsPassed++;
+   }
+   m_testsTotal++;
+   
+   // Test 3: Verify scoring system
+   Print("\nTEST 3: Scoring System");
+   Print("─────────────────────────────────────────────────────────────");
+   
+   // Create scorer with default parameters
+   CSetupScorer *scorer = new CSetupScorer(emaH1, emaM5, rsi,
+                                          15, 5, 50, 2.5,
+                                          25, 20, 20, 15, 10, 10);
+   
+   if(scorer == NULL)
+   {
+      Print("✗ FAIL: Cannot create scorer");
+      allPassed = false;
+      m_testsFailed++;
+      m_testsTotal++;
+   }
+   else
+   {
+      Print("✓ PASS: Scorer created successfully");
+      m_testsPassed++;
+      m_testsTotal++;
+      
+      // Test BUY signal scoring
+      int categoryScores[];
+      int buyScore = scorer.CalculateTotalScore(symbol, SIGNAL_BUY, categoryScores);
+      
+      if(buyScore < 0 || buyScore > 100)
+      {
+         Print("✗ FAIL: BUY score out of range: ", buyScore, " (expected 0-100)");
+         allPassed = false;
+         m_testsFailed++;
+      }
+      else
+      {
+         Print("✓ PASS: BUY score calculated: ", buyScore, "/100");
+         Print("  Trend: ", categoryScores[CATEGORY_TREND], "/25");
+         Print("  EMA Quality: ", categoryScores[CATEGORY_EMA_QUALITY], "/20");
+         Print("  Signal Strength: ", categoryScores[CATEGORY_SIGNAL_STRENGTH], "/20");
+         Print("  Confirmation: ", categoryScores[CATEGORY_CONFIRMATION], "/15");
+         Print("  Market: ", categoryScores[CATEGORY_MARKET], "/10");
+         Print("  Context: ", categoryScores[CATEGORY_CONTEXT], "/10");
+         m_testsPassed++;
+      }
+      m_testsTotal++;
+      
+      // Test SELL signal scoring
+      int sellScore = scorer.CalculateTotalScore(symbol, SIGNAL_SELL, categoryScores);
+      
+      if(sellScore < 0 || sellScore > 100)
+      {
+         Print("✗ FAIL: SELL score out of range: ", sellScore, " (expected 0-100)");
+         allPassed = false;
+         m_testsFailed++;
+      }
+      else
+      {
+         Print("✓ PASS: SELL score calculated: ", sellScore, "/100");
+         m_testsPassed++;
+      }
+      m_testsTotal++;
+      
+      // Test SIGNAL_NONE
+      int noneScore = scorer.CalculateTotalScore(symbol, SIGNAL_NONE, categoryScores);
+      if(noneScore != 0)
+      {
+         Print("✗ FAIL: SIGNAL_NONE should return 0, got: ", noneScore);
+         allPassed = false;
+         m_testsFailed++;
+      }
+      else
+      {
+         Print("✓ PASS: SIGNAL_NONE correctly returns 0");
+         m_testsPassed++;
+      }
+      m_testsTotal++;
+      
+      // Test score breakdown
+      string breakdown = scorer.GetScoreBreakdown(symbol, SIGNAL_BUY, categoryScores);
+      if(StringLen(breakdown) == 0)
+      {
+         Print("✗ FAIL: Score breakdown is empty");
+         allPassed = false;
+         m_testsFailed++;
+      }
+      else
+      {
+         Print("✓ PASS: Score breakdown generated");
+         m_testsPassed++;
+      }
+      m_testsTotal++;
+      
+      // Test strengths and weaknesses
+      string strengths = scorer.GetStrengthsAndWeaknesses(symbol, SIGNAL_BUY, categoryScores);
+      if(StringLen(strengths) == 0)
+      {
+         Print("✗ FAIL: Strengths/weaknesses is empty");
+         allPassed = false;
+         m_testsFailed++;
+      }
+      else
+      {
+         Print("✓ PASS: Strengths/weaknesses generated");
+         m_testsPassed++;
+      }
+      m_testsTotal++;
+      
+      delete scorer;
+   }
+   
+   // Print summary
+   Print("\n╔═══════════════════════════════════════════════════════════╗");
+   Print("║          QUICK TEST SUMMARY                             ║");
+   Print("╚═══════════════════════════════════════════════════════════╝");
+   PrintTestSummary();
+   
+   if(allPassed)
+   {
+      Print("\n✓ ALL TESTS PASSED - Scoring system is working correctly!");
+      return true;
+   }
+   else
+   {
+      Print("\n✗ SOME TESTS FAILED - Please review errors above");
+      return false;
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Reset test counters                                              |
+//+------------------------------------------------------------------+
+void CScoringTest::ResetTestCounters()
+{
+   m_testsPassed = 0;
+   m_testsFailed = 0;
+   m_testsTotal = 0;
+}
+
+//+------------------------------------------------------------------+
+//| Print test summary                                               |
+//+------------------------------------------------------------------+
+void CScoringTest::PrintTestSummary()
+{
+   Print("\nTest Results:");
+   Print("  Total Tests: ", m_testsTotal);
+   Print("  Passed: ", m_testsPassed, " (", (m_testsTotal > 0 ? (m_testsPassed * 100 / m_testsTotal) : 0), "%)");
+   Print("  Failed: ", m_testsFailed, " (", (m_testsTotal > 0 ? (m_testsFailed * 100 / m_testsTotal) : 0), "%)");
+   
+   if(m_testsTotal > 0 && m_testsFailed == 0)
+      Print("\n✓ ALL TESTS PASSED!");
+   else if(m_testsFailed > 0)
+      Print("\n✗ SOME TESTS FAILED - Review output above");
+}
+
+//+------------------------------------------------------------------+
+//| Verify score is within expected range                            |
+//+------------------------------------------------------------------+
+bool CScoringTest::VerifyScoreRange(int score, int min, int max, string testName)
+{
+   m_testsTotal++;
+   if(score >= min && score <= max)
+   {
+      Print("✓ PASS: ", testName, " - Score: ", score, " (range: ", min, "-", max, ")");
+      m_testsPassed++;
+      return true;
+   }
+   else
+   {
+      Print("✗ FAIL: ", testName, " - Score: ", score, " (expected: ", min, "-", max, ")");
+      m_testsFailed++;
+      return false;
+   }
 }
 
 //+------------------------------------------------------------------+
@@ -614,6 +925,13 @@ void CScoringTest::TestEdgeCases(CSetupScorer *scorer, string symbol)
    
    Print("\n✓ Edge case testing complete");
 }
+
+//+------------------------------------------------------------------+
+//| Static member initialization                                     |
+//+------------------------------------------------------------------+
+int CScoringTest::m_testsPassed = 0;
+int CScoringTest::m_testsFailed = 0;
+int CScoringTest::m_testsTotal = 0;
 
 //+------------------------------------------------------------------+
 

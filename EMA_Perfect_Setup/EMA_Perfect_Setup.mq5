@@ -131,7 +131,8 @@ input int      InpWeight_Context = 10;                    // Context & Timing we
 //--- Debug Settings ---
 input group "═══ DEBUG SETTINGS ═══"
 input bool     InpEnableDebug = false;                    // Enable debug logging?
-input bool     InpRunScoringTest = false;                 // Run scoring system test on startup?
+input bool     InpRunScoringTest = false;                 // Run comprehensive scoring system test on startup?
+input bool     InpRunQuickTest = false;                   // Run quick scoring verification test on startup?
 
 //+------------------------------------------------------------------+
 //| Global Variables                                                 |
@@ -256,17 +257,36 @@ int OnInit()
    g_perfMonitor = new CPerformanceMonitor();
    g_perfMonitor.Start();
    
-   // Run scoring system test if enabled
+   // Run quick test if enabled (faster verification)
+   if(InpRunQuickTest)
+   {
+      Print("\n═══════════════════════════════════════════════════════════");
+      Print("RUNNING QUICK SCORING VERIFICATION TEST...");
+      Print("═══════════════════════════════════════════════════════════\n");
+      
+      bool testPassed = CScoringTest::QuickTest(g_emaH1, g_emaM5, g_rsi, "");
+      if(!testPassed)
+      {
+         Print("\n⚠ WARNING: Quick test failed! Please review errors above.");
+         Print("Consider running comprehensive test (InpRunScoringTest) for detailed analysis.");
+      }
+      
+      Print("\n═══════════════════════════════════════════════════════════");
+      Print("QUICK TEST COMPLETE - Continuing with EA initialization...");
+      Print("═══════════════════════════════════════════════════════════\n");
+   }
+   
+   // Run comprehensive scoring system test if enabled
    if(InpRunScoringTest)
    {
       Print("\n═══════════════════════════════════════════════════════════");
-      Print("RUNNING SCORING SYSTEM TEST...");
+      Print("RUNNING COMPREHENSIVE SCORING SYSTEM TEST...");
       Print("═══════════════════════════════════════════════════════════\n");
       
       CScoringTest::RunAllTests(g_emaH1, g_emaM5, g_rsi);
       
       Print("\n═══════════════════════════════════════════════════════════");
-      Print("TEST COMPLETE - Continuing with EA initialization...");
+      Print("COMPREHENSIVE TEST COMPLETE - Continuing with EA initialization...");
       Print("═══════════════════════════════════════════════════════════\n");
    }
    
