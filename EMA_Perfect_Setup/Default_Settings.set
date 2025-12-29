@@ -1,0 +1,128 @@
+; EMA Perfect Setup Scanner EA v2.0 - Default Settings File
+; Copy this file to: MetaTrader 5 > Profiles > [YourProfile] > [YourAccount] > [YourSymbol] > [YourTimeframe]
+; Or use: File > Open Data Folder > MQL5 > Presets > Experts
+
+; ============================================================================
+; GENERAL SETTINGS
+; ============================================================================
+InpSymbols=EURUSD,GBPUSD
+InpSignalTF=PERIOD_M5
+InpTrendTF=PERIOD_H1
+InpScanInterval=15
+InpMagicNumber=987654
+
+; ============================================================================
+; SCORING & FILTERING
+; ============================================================================
+InpPerfectThreshold=85
+InpShowGoodSetups=false
+InpShowWeakSetups=false
+InpLogRejectedSetups=true
+
+; ============================================================================
+; EMA SETTINGS
+; ============================================================================
+InpEMA_Fast=9
+InpEMA_Medium=21
+InpEMA_Slow=50
+InpEMA_Method=MODE_EMA
+InpEMA_AppliedPrice=PRICE_CLOSE
+
+; ============================================================================
+; RSI SETTINGS
+; ============================================================================
+InpUseRSI=true
+InpRSI_Period=14
+
+; ============================================================================
+; SCORING THRESHOLDS
+; ============================================================================
+InpMinH1Distance=15
+InpMinEMASeparation=5
+InpMinCandleBody=50
+InpMaxSpread=2.5
+
+; ============================================================================
+; SCORING WEIGHTS (Advanced - Only modify if you understand the system)
+; ============================================================================
+InpWeight_Trend=25
+InpWeight_EMAQuality=20
+InpWeight_SignalStrength=20
+InpWeight_Confirmation=15
+InpWeight_Market=10
+InpWeight_Context=10
+
+; ============================================================================
+; RISK MANAGEMENT
+; ============================================================================
+InpRiskPercent=1.0
+InpStopLossPips=20
+InpTakeProfit1Pips=40
+InpTakeProfit2Pips=80
+
+; ============================================================================
+; VISUAL SETTINGS
+; ============================================================================
+InpShowDashboard=true
+InpShowArrows=true
+InpShowLabels=true
+InpShowPanel=false
+InpDashboardX=20
+InpDashboardY=30
+
+; ============================================================================
+; ARROW SETTINGS
+; ============================================================================
+InpArrowSize=3
+InpArrowOffset=5
+
+; ============================================================================
+; LABEL SETTINGS
+; ============================================================================
+InpLabelFontSize=8
+InpLabelOffset=10
+
+; ============================================================================
+; ALERT SETTINGS
+; ============================================================================
+InpEnableAlerts=true
+InpEnableSound=true
+InpSoundFile=perfect_setup.wav
+InpEnablePush=false
+InpEnableEmail=false
+InpEmailAddress=
+
+; ============================================================================
+; JOURNAL SETTINGS
+; ============================================================================
+InpEnableJournal=true
+InpAutoScreenshot=true
+InpCSVExport=true
+
+; ============================================================================
+; DEBUG SETTINGS
+; ============================================================================
+InpEnableDebug=false
+InpRunScoringTest=false
+
+; ============================================================================
+; NOTES
+; ============================================================================
+; These are balanced default settings tested for optimal performance
+; - Perfect Threshold: 85 (only highest quality setups)
+; - Symbols: EURUSD, GBPUSD (major pairs, low spread)
+; - Scan Interval: 15 seconds (balanced responsiveness)
+; - Risk: 1% per trade (conservative)
+;
+; RECOMMENDATIONS:
+; - Start with these defaults
+; - Demo test minimum 3 months
+; - Adjust gradually based on results
+; - Don't lower perfect threshold easily
+; - Quality over quantity
+;
+; For detailed explanations, see:
+; - SETTINGS_GUIDE.md
+; - USER_MANUAL.md
+; - FAQ.md
+

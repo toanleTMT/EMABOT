@@ -1,0 +1,177 @@
+================================================================================
+EMA PERFECT SETUP SCANNER EA v2.0 - INSTALLATION GUIDE
+================================================================================
+
+STEP 1: COPY FILES
+------------------
+1. Copy the entire "EMA_Perfect_Setup" folder to your MetaTrader 5 directory:
+   
+   Windows: C:\Users\[YourName]\AppData\Roaming\MetaQuotes\Terminal\[TerminalID]\MQL5\Experts\
+   
+   Or use: File > Open Data Folder > MQL5 > Experts
+
+2. Ensure the folder structure is maintained:
+   EMA_Perfect_Setup/
+   ├── EMA_Perfect_Setup.mq5
+   ├── Include/
+   │   ├── Config.mqh
+   │   ├── Structs.mqh
+   │   ├── Indicators/
+   │   ├── Scoring/
+   │   ├── Visuals/
+   │   ├── Alerts/
+   │   ├── Journal/
+   │   └── Utilities/
+
+
+STEP 2: COMPILE THE EA
+-----------------------
+1. Open MetaEditor (F4 in MT5 or Tools > MetaQuotes Language Editor)
+2. Navigate to: Experts > EMA_Perfect_Setup > EMA_Perfect_Setup.mq5
+3. Press F7 or click Compile button
+4. Check for any compilation errors in the Errors tab
+5. If successful, you'll see "0 error(s), 0 warning(s)"
+
+
+STEP 3: ATTACH TO CHART
+------------------------
+1. Open MetaTrader 5
+2. Open a chart (recommended: M5 timeframe for any major pair)
+3. In Navigator panel, go to: Expert Advisors > EMA_Perfect_Setup
+4. Drag and drop "EMA_Perfect_Setup" onto the chart
+5. The EA inputs window will appear
+
+
+STEP 4: CONFIGURE SETTINGS
+---------------------------
+BASIC SETTINGS (Recommended for first-time users):
+
+General Settings:
+- Symbols to scan: "EURUSD,GBPUSD" (comma-separated)
+- Signal Timeframe: M5 (default)
+- Trend Timeframe: H1 (default)
+- Scan interval: 15 seconds (default)
+
+Scoring & Filtering:
+- Minimum score for alert: 85 (PERFECT setups only)
+- Show GOOD setups: false (recommended)
+- Show WEAK setups: false (recommended)
+- Log rejected setups: true (for learning)
+
+EMA Settings:
+- Fast EMA Period: 9 (default)
+- Medium EMA Period: 21 (default)
+- Slow EMA Period: 50 (default)
+
+RSI Settings:
+- Use RSI filter: true (default)
+- RSI Period: 14 (default)
+
+Risk Management:
+- Stop Loss: 25 pips (adjust based on your risk tolerance)
+- Take Profit 1: 25 pips (50% position close)
+- Take Profit 2: 50 pips (50% position close)
+- Risk per trade: 1.0% (adjust based on account size)
+
+Visual Settings:
+- Show arrows: true
+- Show labels: true
+- Show dashboard: true
+- Show breakdown panel: true
+
+Alert Settings:
+- Alert on PERFECT setups: true
+- Popup for perfect: true
+- Sound for perfect: true
+- Push notification: false (set to true if you want mobile alerts)
+- Email: false (set to true if you want email alerts)
+
+Journal Settings:
+- Enable trading journal: true
+- Export journal to CSV: true
+- Take screenshots: false (optional)
+
+
+STEP 5: ENABLE AUTOTRADING
+---------------------------
+1. Click the "AutoTrading" button in MT5 toolbar (or press Ctrl+E)
+2. Ensure the button is green/enabled
+3. The EA will now start scanning markets
+
+
+STEP 6: VERIFY OPERATION
+-------------------------
+1. Check the Experts tab for initialization message:
+   "=== EMA Perfect Setup Scanner EA v2.0 Initializing ==="
+   "=== Initialization Complete ==="
+
+2. Look for the dashboard in the top-right corner of your chart
+
+3. Wait for a perfect setup (85+ score) - this may take time as the EA
+   only alerts on PERFECT quality setups
+
+4. When a perfect setup is found, you should see:
+   - Large arrow on chart (green for BUY, red for SELL)
+   - Detailed label with entry/SL/TP information
+   - Dashboard update with score breakdown
+   - Popup alert (if enabled)
+   - Sound alert (if enabled)
+
+
+TROUBLESHOOTING
+---------------
+
+Problem: EA doesn't initialize
+Solution:
+- Check that all files are in correct folder structure
+- Verify compilation was successful (no errors)
+- Check Experts tab for error messages
+- Ensure symbols are available in Market Watch
+
+Problem: No signals appearing
+Solution:
+- Perfect setups (85+) are rare by design - this is normal
+- Check that symbols are correctly spelled (e.g., "EURUSD" not "EUR/USD")
+- Verify market is open
+- Check dashboard for "Scanning..." status
+
+Problem: Dashboard not showing
+Solution:
+- Enable "Show dashboard" in EA inputs
+- Check that chart has enough space (dashboard is top-right)
+- Try detaching and reattaching EA
+
+Problem: Alerts not working
+Solution:
+- Check Alert settings in EA inputs
+- Verify sound files exist in Sounds folder
+- For push notifications: Configure in MT5 Settings > Notifications
+- For email: Configure in MT5 Settings > Email
+
+Problem: Journal not saving
+Solution:
+- Check "Enable trading journal" is true
+- Verify write permissions in MT5 data folder
+- Check journal folder path is correct
+
+
+DEMO TESTING RECOMMENDATIONS
+----------------------------
+1. Test on DEMO account first (minimum 3 months recommended)
+2. Start with 1-2 symbols to understand behavior
+3. Monitor dashboard and journal to learn scoring system
+4. Don't trade every perfect setup - use your judgment
+5. Review journal entries to understand why setups scored high/low
+
+
+SUPPORT
+-------
+For detailed specifications, refer to: ema_setup_ea.md
+For usage questions, review: README.md
+
+Remember: This EA does NOT auto-trade. You manually enter trades based on signals.
+
+================================================================================
+Good luck with your trading! 🚀
+================================================================================
+
