@@ -137,8 +137,10 @@ bool CRSIManager::GetRSIValue(string symbol, double &rsi)
    int index = FindSymbolIndex(symbol);
    if(index < 0) return false;
    
+   // ANTI-REPAINT: Get RSI from closed bar (bar 1) for consistency
+   // Note: RSI repainting is less critical than price, but using bar 1 maintains consistency
    double buffer[];
-   if(CopyBuffer(m_rsiHandle[index], 0, 0, 1, buffer) <= 0)
+   if(CopyBuffer(m_rsiHandle[index], 0, 1, 1, buffer) <= 0)  // Bar 1 (closed bar)
       return false;
    
    rsi = buffer[0];

@@ -170,14 +170,18 @@ bool CEMAManager::GetEMAData(string symbol, double &emaFast[], double &emaMedium
    int index = FindSymbolIndex(symbol);
    if(index < 0) return false;
    
+   // ANTI-REPAINT: Get data starting from bar 1 (closed bar) instead of bar 0
+   // Bar 0 = current forming bar (repaints!)
+   // Bar 1 = last closed bar (no repaint)
+   // We get 3 bars: [0]=bar1(closed), [1]=bar2, [2]=bar3
    ArrayResize(emaFast, 3);
    ArrayResize(emaMedium, 3);
    ArrayResize(emaSlow, 3);
    
-   // Copy current, previous, and before previous values
-   if(CopyBuffer(m_emaFastHandle[index], 0, 0, 3, emaFast) <= 0) return false;
-   if(CopyBuffer(m_emaMediumHandle[index], 0, 0, 3, emaMedium) <= 0) return false;
-   if(CopyBuffer(m_emaSlowHandle[index], 0, 0, 3, emaSlow) <= 0) return false;
+   // Copy from bar 1 (closed bar) onwards - prevents repainting
+   if(CopyBuffer(m_emaFastHandle[index], 0, 1, 3, emaFast) <= 0) return false;
+   if(CopyBuffer(m_emaMediumHandle[index], 0, 1, 3, emaMedium) <= 0) return false;
+   if(CopyBuffer(m_emaSlowHandle[index], 0, 1, 3, emaSlow) <= 0) return false;
    
    return true;
 }
