@@ -32,10 +32,15 @@
 #include "Include/Utilities/Fakeout_Detector.mqh"
 #include "Include/Utilities/Noise_Filter.mqh"
 #include "Include/Utilities/Repaint_Preventer.mqh"
+#include "Include/Utilities/Signal_Accuracy_Validator.mqh"
+#include "Include/Utilities/Repaint_Checker.mqh"
+#include "Include/Utilities/MAE_Tracker.mqh"
+#include "Include/Utilities/Performance_Monitor_Enhanced.mqh"
 #include "Include/Utilities/Debug_Helper.mqh"
 #include "Include/Utilities/Symbol_Utils.mqh"
 #include "Include/Utilities/Input_Validator.mqh"
 #include "Include/Utilities/Performance_Monitor.mqh"
+#include "Include/Utilities/Statistics_Tracker.mqh"
 #include "Include/Utilities/Scoring_Test.mqh"
 
 //+------------------------------------------------------------------+
@@ -92,6 +97,11 @@ input double   InpMinRSI_Momentum = 55.0;                   // Min RSI for momen
 input bool     InpUseVolumeFilter = true;                   // Volume filter: Require above-average volume?
 input int      InpVolumePeriod = 10;                         // Number of candles for average volume (10 recommended)
 
+//--- Statistics Tracking ---
+input group "═══ STATISTICS TRACKING ═══"
+input bool     InpEnableStatistics = true;                   // Enable statistics tracking?
+input int      InpStatsPrintInterval = 10;                   // Print stats every N signals (0 = only on request)
+
 //--- Fakeout Detection ---
 input group "═══ FAKEOUT DETECTION ═══"
 input bool     InpEnableFakeoutDetection = true;          // Enable fakeout detection?
@@ -143,6 +153,29 @@ input bool     InpExportCSV = true;                       // Export journal to C
 input bool     InpTakeScreenshots = false;                // Take screenshots on perfect setup?
 input string   InpJournalPath = "EMA_Journal";            // Journal folder name
 
+//--- Signal Accuracy Validation ---
+input group "═══ SIGNAL ACCURACY VALIDATION ═══"
+input bool     InpEnableAccuracyValidation = true;           // Enable signal accuracy validation?
+input int      InpValidationCandles = 5;                      // Candles to validate signal (3-5 recommended)
+input double   InpMinPipsForValid = 10.0;                     // Min pips required for valid signal
+
+//--- Repaint Detection ---
+input group "═══ REPAINT DETECTION ═══"
+input bool     InpEnableRepaintCheck = true;                  // Enable repaint detection?
+
+//--- Maximum Adverse Excursion (MAE) Tracking ---
+input group "═══ MAE TRACKING ═══"
+input bool     InpEnableMAETracking = true;                   // Enable MAE tracking?
+input int      InpMAEUpdateInterval = 5;                       // Update MAE every N seconds
+
+//--- Enhanced Performance Monitoring ---
+input group "═══ ENHANCED PERFORMANCE MONITOR ═══"
+input bool     InpEnablePerfMonitor = true;                    // Enable enhanced performance monitor?
+input int      InpQualityBars = 10;                            // Bars to evaluate signal quality (10 recommended)
+input int      InpPerfUpdateInterval = 5;                       // Update performance data every N seconds
+input bool     InpExportPerfCSV = true;                         // Export performance data to CSV?
+input string   InpPerfCSVFilename = "Indicator_Score_Card.csv"; // CSV filename for performance data
+
 //--- Advanced Scoring Weights (for experienced users) ---
 input group "═══ ADVANCED: SCORING WEIGHTS ═══"
 input int      InpWeight_Trend = 25;                      // Trend Alignment weight (default 25)
@@ -151,6 +184,11 @@ input int      InpWeight_SignalStrength = 20;             // Signal Strength wei
 input int      InpWeight_Confirmation = 15;               // Confirmation weight (default 15)
 input int      InpWeight_Market = 10;                     // Market Conditions weight (default 10)
 input int      InpWeight_Context = 10;                    // Context & Timing weight (default 10)
+
+//--- Statistics Tracking ---
+input group "═══ STATISTICS TRACKING ═══"
+input bool     InpEnableStatistics = true;                   // Enable statistics tracking?
+input int      InpStatsPrintInterval = 10;                   // Print stats every N signals (0 = only on request)
 
 //--- Debug Settings ---
 input group "═══ DEBUG SETTINGS ═══"
@@ -178,6 +216,10 @@ CSetupAnalyzer *g_analyzer = NULL;
 CSignalValidator *g_validator = NULL;
 CFakeoutDetector *g_fakeoutDetector = NULL;
 CNoiseFilter *g_noiseFilter = NULL;
+CSignalAccuracyValidator *g_accuracyValidator = NULL;
+CRepaintChecker *g_repaintChecker = NULL;
+CMAETracker *g_maeTracker = NULL;
+CPerformanceMonitorEnhanced *g_perfMonitorEnhanced = NULL;
 CDebugHelper *g_debug = NULL;
 CDashboard *g_dashboard = NULL;
 CArrowManager *g_arrowManager = NULL;
@@ -186,6 +228,7 @@ CPanelManager *g_panelManager = NULL;
 CAlertManager *g_alertManager = NULL;
 CJournalManager *g_journal = NULL;
 CPerformanceMonitor *g_perfMonitor = NULL;
+CStatisticsTracker *g_statistics = NULL;
 
 // Symbol arrays
 string g_symbols[];
@@ -353,6 +396,42 @@ int OnInit()
          Print("  - Volume Filter: Require volume > average of last ", InpVolumePeriod, " candles");
    }
    
+   // Initialize statistics tracker
+   if(InpEnableStatistics)
+   {
+      g_statistics = new CStatisticsTracker();
+      Print("Statistics tracking enabled");
+   }
+   
+   // Initialize signal accuracy validator
+   if(InpEnableAccuracyValidation)
+   {
+      g_accuracyValidator = new CSignalAccuracyValidator();
+      Print("Signal accuracy validation enabled: ", InpValidationCandles, " candles, ", 
+            InpMinPipsForValid, " pips minimum");
+   }
+   
+   // Initialize repaint checker
+   if(InpEnableRepaintCheck)
+   {
+      g_repaintChecker = new CRepaintChecker();
+      Print("Repaint detection enabled - will monitor signal stability");
+   }
+   
+   // Initialize MAE tracker
+   if(InpEnableMAETracking)
+   {
+      g_maeTracker = new CMAETracker();
+      Print("MAE tracking enabled - will monitor maximum drawdown for each signal");
+   }
+   
+   // Initialize enhanced performance monitor
+   if(InpEnablePerfMonitor)
+   {
+      g_perfMonitorEnhanced = new CPerformanceMonitorEnhanced();
+      Print("Enhanced performance monitor enabled - tracking Win/Loss, Quality Score, and Drawdown");
+   }
+   
    // Initialize debug helper
    g_debug = new CDebugHelper(InpEnableDebug, "[EMA_EA]");
    
@@ -471,6 +550,67 @@ void OnDeinit(const int reason)
    if(g_validator != NULL) { delete g_validator; g_validator = NULL; }
    if(g_fakeoutDetector != NULL) { delete g_fakeoutDetector; g_fakeoutDetector = NULL; }
    if(g_noiseFilter != NULL) { delete g_noiseFilter; g_noiseFilter = NULL; }
+   if(g_accuracyValidator != NULL)
+   {
+      // Print final accuracy report before cleanup
+      if(InpEnableAccuracyValidation)
+      {
+         Print("\n═══════════════════════════════════════════════════════════");
+         Print("FINAL SIGNAL ACCURACY REPORT");
+         Print("═══════════════════════════════════════════════════════════");
+         g_accuracyValidator.PrintAccuracyReport();
+      }
+      delete g_accuracyValidator;
+      g_accuracyValidator = NULL;
+   }
+   if(g_repaintChecker != NULL)
+   {
+      // Print final repaint report before cleanup
+      if(InpEnableRepaintCheck)
+      {
+         Print("\n═══════════════════════════════════════════════════════════");
+         Print("FINAL REPAINT DETECTION REPORT");
+         Print("═══════════════════════════════════════════════════════════");
+         g_repaintChecker.PrintRepaintReport();
+      }
+      delete g_repaintChecker;
+      g_repaintChecker = NULL;
+   }
+   if(g_maeTracker != NULL)
+   {
+      // Print final MAE report before cleanup
+      if(InpEnableMAETracking)
+      {
+         Print("\n═══════════════════════════════════════════════════════════");
+         Print("FINAL MAE (MAXIMUM ADVERSE EXCURSION) REPORT");
+         Print("═══════════════════════════════════════════════════════════");
+         g_maeTracker.PrintMAEReport();
+      }
+      delete g_maeTracker;
+      g_maeTracker = NULL;
+   }
+   if(g_perfMonitorEnhanced != NULL)
+   {
+      // Print final performance report and export CSV before cleanup
+      if(InpEnablePerfMonitor)
+      {
+         Print("\n═══════════════════════════════════════════════════════════");
+         Print("FINAL ENHANCED PERFORMANCE MONITOR REPORT");
+         Print("═══════════════════════════════════════════════════════════");
+         g_perfMonitorEnhanced.PrintPerformanceReport();
+         
+         // Export final CSV
+         if(InpExportPerfCSV)
+         {
+            if(g_perfMonitorEnhanced.ExportToCSV(InpPerfCSVFilename))
+            {
+               Print("Performance data exported to: ", InpPerfCSVFilename);
+            }
+         }
+      }
+      delete g_perfMonitorEnhanced;
+      g_perfMonitorEnhanced = NULL;
+   }
    if(g_debug != NULL) { delete g_debug; g_debug = NULL; }
    if(g_perfMonitor != NULL)
    {
@@ -674,7 +814,8 @@ void ProcessSignalOnBarClose(string symbol, int symbolIndex, datetime closedBarT
    }
    
    // Calculate entry/SL/TP
-   double entry = GetCurrentPrice(symbol, signalType);
+   // ANTI-REPAINT: Use closed bar close price as entry (bar 1)
+   double entry = iClose(symbol, InpSignalTF, 1);  // Closed bar close price
    double sl = CalculateStopLoss(symbol, signalType, entry);
    double tp1 = CalculateTakeProfit(symbol, signalType, entry, InpTakeProfit1Pips);
    double tp2 = CalculateTakeProfit(symbol, signalType, entry, InpTakeProfit2Pips);
@@ -689,6 +830,45 @@ void ProcessSignalOnBarClose(string symbol, int symbolIndex, datetime closedBarT
       g_perfectToday++;
       g_signalsToday++;
       g_lastSignalTime[symbolIndex] = closedBarTime;  // ANTI-REPAINT: Use closed bar time
+      
+      // Record signal in statistics tracker
+      if(InpEnableStatistics && g_statistics != NULL)
+      {
+         g_statistics.RecordSignal(symbol, signalType, closedBarTime, entry, sl, tp1, tp2);
+         
+         // Print statistics periodically
+         if(InpStatsPrintInterval > 0 && g_signalsToday % InpStatsPrintInterval == 0)
+         {
+            g_statistics.PrintStatistics();
+         }
+      }
+      
+      // Register signal for accuracy validation
+      if(InpEnableAccuracyValidation && g_accuracyValidator != NULL)
+      {
+         g_accuracyValidator.RegisterSignal(symbol, signalType, closedBarTime, entry, sl, tp1,
+                                           InpSignalTF, InpValidationCandles, InpMinPipsForValid);
+      }
+      
+      // Record signal snapshot for repaint checking
+      if(InpEnableRepaintCheck && g_repaintChecker != NULL)
+      {
+         g_repaintChecker.RecordSignalSnapshot(symbol, signalType, closedBarTime, closedBarTime,
+                                              entry, sl, tp1, tp2, totalScore);
+      }
+      
+      // Register signal for MAE tracking
+      if(InpEnableMAETracking && g_maeTracker != NULL)
+      {
+         g_maeTracker.RegisterSignal(symbol, signalType, closedBarTime, entry, sl, tp1, tp2, InpSignalTF);
+      }
+      
+      // Register signal for enhanced performance monitoring
+      if(InpEnablePerfMonitor && g_perfMonitorEnhanced != NULL)
+      {
+         g_perfMonitorEnhanced.RegisterSignal(symbol, signalType, closedBarTime, entry, sl, tp1, tp2,
+                                             InpSignalTF, InpQualityBars);
+      }
       
       // OPTIMIZATION: Get strengths/weaknesses once and reuse
       string analysis = g_scorer.GetStrengthsAndWeaknesses(symbol, signalType, categoryScores);
@@ -881,99 +1061,295 @@ void OnTimer()
    // OPTIMIZATION: Dashboard flash restoration (check once per cycle)
    if(InpShowDashboard && g_dashboard != NULL)
       g_dashboard.CheckFlashRestore();
+   
+   // Print statistics periodically (if enabled and interval set)
+   if(InpEnableStatistics && g_statistics != NULL && InpStatsPrintInterval > 0)
+   {
+      static int lastStatsPrint = 0;
+      if(g_signalsToday > 0 && g_signalsToday != lastStatsPrint && g_signalsToday % InpStatsPrintInterval == 0)
+      {
+         lastStatsPrint = g_signalsToday;
+         Print("\n═══════════════════════════════════════════════════════════");
+         Print("PERIODIC STATISTICS REPORT (Signal #", g_signalsToday, ")");
+         Print("═══════════════════════════════════════════════════════════");
+         g_statistics.PrintStatistics();
+      }
+   }
+   
+   // Check pending signal accuracy validations
+   if(InpEnableAccuracyValidation && g_accuracyValidator != NULL)
+   {
+      g_accuracyValidator.CheckPendingSignals();
+      
+      // Log false/lagging signals to journal
+      // Note: This would require tracking which signals were just validated
+      // For now, accuracy is tracked internally and reported in accuracy report
+      
+      // Cleanup old signals periodically (every 10 cycles)
+      static int cleanupCounter = 0;
+      cleanupCounter++;
+      if(cleanupCounter >= 10)
+      {
+         cleanupCounter = 0;
+         g_accuracyValidator.CleanupOldSignals(24); // Keep last 24 hours
+      }
+   }
+   
+   // Check for repainting signals (after candles close)
+   if(InpEnableRepaintCheck && g_repaintChecker != NULL)
+   {
+      // Check all symbols for closed bars that need repaint checking
+      for(int i = 0; i < ArraySize(g_symbols); i++)
+      {
+         string symbol = g_symbols[i];
+         
+         // Get closed bar time (bar 1)
+         datetime closedBarTime = CRepaintPreventer::GetClosedBarTime(symbol, InpSignalTF);
+         if(closedBarTime == 0)
+            continue;
+         
+         // Check if this bar needs repaint checking (wait 1 bar after close for stability)
+         // Check bar that closed 2 bars ago (more stable)
+         datetime checkBarTime = iTime(symbol, InpSignalTF, 2);
+         if(checkBarTime > 0)
+         {
+            g_repaintChecker.CheckRepaint(symbol, checkBarTime);
+         }
+      }
+      
+      // Cleanup old snapshots periodically (every 10 cycles)
+      static int repaintCleanupCounter = 0;
+      repaintCleanupCounter++;
+      if(repaintCleanupCounter >= 10)
+      {
+         repaintCleanupCounter = 0;
+         g_repaintChecker.CleanupOldSnapshots(24); // Keep last 24 hours
+      }
+   }
+   
+   // Update MAE for all active trades
+   if(InpEnableMAETracking && g_maeTracker != NULL)
+   {
+      static datetime lastMAEUpdate = 0;
+      datetime currentTime = TimeCurrent();
+      
+      // Update MAE every N seconds (to avoid too frequent updates)
+      if(currentTime - lastMAEUpdate >= InpMAEUpdateInterval)
+      {
+         lastMAEUpdate = currentTime;
+         g_maeTracker.UpdateMAE();
+      }
+      
+      // Cleanup old trades periodically (every 10 cycles)
+      static int maeCleanupCounter = 0;
+      maeCleanupCounter++;
+      if(maeCleanupCounter >= 10)
+      {
+         maeCleanupCounter = 0;
+         g_maeTracker.CleanupOldTrades(24); // Keep last 24 hours
+      }
+   }
+   
+   // Update enhanced performance monitor
+   if(InpEnablePerfMonitor && g_perfMonitorEnhanced != NULL)
+   {
+      static datetime lastPerfUpdate = 0;
+      datetime currentTime = TimeCurrent();
+      
+      // Update performance data every N seconds
+      if(currentTime - lastPerfUpdate >= InpPerfUpdateInterval)
+      {
+         lastPerfUpdate = currentTime;
+         g_perfMonitorEnhanced.UpdateTracks();
+      }
+      
+      // Export to CSV periodically (every 20 cycles = ~5 minutes at 15s interval)
+      static int csvExportCounter = 0;
+      csvExportCounter++;
+      if(InpExportPerfCSV && csvExportCounter >= 20)
+      {
+         csvExportCounter = 0;
+         g_perfMonitorEnhanced.ExportToCSV(InpPerfCSVFilename);
+      }
+      
+      // Cleanup old tracks periodically (every 10 cycles)
+      static int perfCleanupCounter = 0;
+      perfCleanupCounter++;
+      if(perfCleanupCounter >= 10)
+      {
+         perfCleanupCounter = 0;
+         g_perfMonitorEnhanced.CleanupOldTracks(24); // Keep last 24 hours
+      }
+   }
 }
 
 //+------------------------------------------------------------------+
-//| Determine signal type (BUY/SELL/NONE)                           |
+//| Get Entry Signal - Returns signal type as integer               |
+//| Returns: 0 = No signal, 1 = BUY signal, -1 = SELL signal        |
+//| Logic được comment rõ ràng từng điều kiện kiểm tra              |
 //+------------------------------------------------------------------+
-ENUM_SIGNAL_TYPE DetermineSignalType(string symbol)
+int GetEntrySignal(string symbol)
 {
-   // Get M5 EMA data
+   // ============================================================
+   // BƯỚC 1: LẤY DỮ LIỆU EMA CHO M5 (Timeframe tín hiệu)
+   // ============================================================
    double emaFast[], emaMedium[], emaSlow[];
+   // Kiểm tra: Nếu không lấy được dữ liệu EMA M5 thì không có tín hiệu
    if(!g_emaM5.GetEMAData(symbol, emaFast, emaMedium, emaSlow))
-      return SIGNAL_NONE;
+      return 0; // Không có tín hiệu
    
-   // Get H1 EMA data
+   // ============================================================
+   // BƯỚC 2: LẤY DỮ LIỆU EMA CHO H1 (Timeframe xu hướng)
+   // ============================================================
    double emaFastH1[], emaMediumH1[], emaSlowH1[];
+   // Kiểm tra: Nếu không lấy được dữ liệu EMA H1 thì không có tín hiệu
    if(!g_emaH1.GetEMAData(symbol, emaFastH1, emaMediumH1, emaSlowH1))
-      return SIGNAL_NONE;
+      return 0; // Không có tín hiệu
    
-   // ANTI-REPAINT: Use closed bar (bar 1) for all price and indicator data
-   // Bar 0 = current forming bar (repaints!)
-   // Bar 1 = last closed bar (no repaint)
-   double price = iClose(symbol, InpSignalTF, 1);  // Closed bar price
-   double rsi = 50;
+   // ============================================================
+   // BƯỚC 3: LẤY GIÁ ĐÓNG CỬA CỦA NẾN ĐÃ ĐÓNG (Bar 1)
+   // ANTI-REPAINT: Sử dụng bar 1 (nến đã đóng) để tránh repaint
+   // Bar 0 = nến đang hình thành (có thể thay đổi - repaint!)
+   // Bar 1 = nến đã đóng (không thay đổi - không repaint)
+   // ============================================================
+   double price = iClose(symbol, InpSignalTF, 1);  // Giá đóng cửa của nến đã đóng
+   
+   // ============================================================
+   // BƯỚC 4: LẤY GIÁ TRỊ RSI (nếu bật sử dụng RSI)
+   // ============================================================
+   double rsi = 50; // Giá trị mặc định nếu không dùng RSI
+   // Kiểm tra: Nếu bật sử dụng RSI và RSI manager tồn tại
    if(InpUseRSI && g_rsi != NULL)
    {
-      // Note: RSI GetRSIValue gets bar 0, but RSI repainting is less critical than price
-      // For full anti-repaint, would need to modify RSI manager to support bar offset
+      // Lấy giá trị RSI hiện tại
       g_rsi.GetRSIValue(symbol, rsi);
    }
    
-   // Check BUY conditions (using closed bar data)
-   bool buyConditions = true;
+   // ============================================================
+   // BƯỚC 5: KIỂM TRA ĐIỀU KIỆN TÍN HIỆU BUY
+   // ============================================================
+   bool buyConditions = true; // Bắt đầu với giả định tất cả điều kiện đều đúng
    
-   // H1: Price > EMA 50 (using closed bar)
-   if(price <= emaSlowH1[0]) buyConditions = false;
+   // ĐIỀU KIỆN BUY 1: H1 - Giá phải ở trên EMA 50 (xu hướng tăng trên H1)
+   // Kiểm tra: Nếu giá <= EMA 50 H1 thì không phải tín hiệu BUY
+   if(price <= emaSlowH1[0]) 
+      buyConditions = false; // Vi phạm điều kiện BUY
    
-   // H1: EMAs aligned (9 > 21 > 50)
-   if(!(emaFastH1[0] > emaMediumH1[0] && emaMediumH1[0] > emaSlowH1[0])) buyConditions = false;
+   // ĐIỀU KIỆN BUY 2: H1 - Các EMA phải sắp xếp theo thứ tự tăng (9 > 21 > 50)
+   // Kiểm tra: EMA 9 H1 phải > EMA 21 H1 và EMA 21 H1 phải > EMA 50 H1
+   if(!(emaFastH1[0] > emaMediumH1[0] && emaMediumH1[0] > emaSlowH1[0])) 
+      buyConditions = false; // Vi phạm điều kiện BUY
    
-   // M5: EMAs aligned (9 > 21 > 50) - using closed bar values
-   if(!(emaFast[0] > emaMedium[0] && emaMedium[0] > emaSlow[0])) buyConditions = false;
+   // ĐIỀU KIỆN BUY 3: M5 - Các EMA phải sắp xếp theo thứ tự tăng (9 > 21 > 50)
+   // Kiểm tra: EMA 9 M5 phải > EMA 21 M5 và EMA 21 M5 phải > EMA 50 M5
+   if(!(emaFast[0] > emaMedium[0] && emaMedium[0] > emaSlow[0])) 
+      buyConditions = false; // Vi phạm điều kiện BUY
    
-   // M5: EMA 9 crosses above EMA 21 (check closed bar [0] vs previous [1])
-   // emaFast[0] = closed bar, emaFast[1] = bar before closed bar
-   if(!(emaFast[0] > emaMedium[0] && emaFast[1] <= emaMedium[1])) buyConditions = false;
+   // ĐIỀU KIỆN BUY 4: M5 - EMA 9 phải cắt lên trên EMA 21 (tín hiệu mua)
+   // Kiểm tra: EMA 9 hiện tại > EMA 21 hiện tại VÀ EMA 9 nến trước <= EMA 21 nến trước
+   // emaFast[0] = EMA 9 của nến đã đóng, emaFast[1] = EMA 9 của nến trước đó
+   if(!(emaFast[0] > emaMedium[0] && emaFast[1] <= emaMedium[1])) 
+      buyConditions = false; // Vi phạm điều kiện BUY
    
-   // M5: Closed candle closes above EMA 9
-   if(price <= emaFast[0]) buyConditions = false;
+   // ĐIỀU KIỆN BUY 5: M5 - Nến đã đóng phải đóng trên EMA 9
+   // Kiểm tra: Giá đóng cửa phải > EMA 9 M5
+   if(price <= emaFast[0]) 
+      buyConditions = false; // Vi phạm điều kiện BUY
    
-   // M5: Price, EMA 9, and EMA 21 all above EMA 50
-   if(!(price > emaSlow[0] && emaFast[0] > emaSlow[0] && emaMedium[0] > emaSlow[0])) buyConditions = false;
+   // ĐIỀU KIỆN BUY 6: M5 - Giá, EMA 9, và EMA 21 đều phải ở trên EMA 50
+   // Kiểm tra: Giá > EMA 50 VÀ EMA 9 > EMA 50 VÀ EMA 21 > EMA 50
+   if(!(price > emaSlow[0] && emaFast[0] > emaSlow[0] && emaMedium[0] > emaSlow[0])) 
+      buyConditions = false; // Vi phạm điều kiện BUY
    
-   // M5: RSI > 50
-   if(InpUseRSI && rsi <= InpRSI_BuyLevel) buyConditions = false;
+   // ĐIỀU KIỆN BUY 7: M5 - RSI phải > ngưỡng mua (mặc định 50)
+   // Kiểm tra: Nếu bật RSI và RSI <= ngưỡng mua thì không phải tín hiệu BUY
+   if(InpUseRSI && rsi <= InpRSI_BuyLevel) 
+      buyConditions = false; // Vi phạm điều kiện BUY
    
-   // M5: EMAs have clear separation
+   // ĐIỀU KIỆN BUY 8: M5 - Các EMA phải có khoảng cách tách biệt rõ ràng
+   // Kiểm tra: Khoảng cách giữa các EMA phải >= khoảng cách tối thiểu
    double separation = g_emaM5.GetEMASeparation(symbol, InpSignalTF);
-   if(separation < InpMinEMASeparation) buyConditions = false;
+   if(separation < InpMinEMASeparation) 
+      buyConditions = false; // Vi phạm điều kiện BUY
    
+   // Nếu tất cả điều kiện BUY đều đúng, trả về tín hiệu BUY
    if(buyConditions)
-      return SIGNAL_BUY;
+      return 1; // Tín hiệu BUY
    
-   // Check SELL conditions
-   bool sellConditions = true;
+   // ============================================================
+   // BƯỚC 6: KIỂM TRA ĐIỀU KIỆN TÍN HIỆU SELL
+   // ============================================================
+   bool sellConditions = true; // Bắt đầu với giả định tất cả điều kiện đều đúng
    
-   // H1: Price < EMA 50
-   if(price >= emaSlowH1[0]) sellConditions = false;
+   // ĐIỀU KIỆN SELL 1: H1 - Giá phải ở dưới EMA 50 (xu hướng giảm trên H1)
+   // Kiểm tra: Nếu giá >= EMA 50 H1 thì không phải tín hiệu SELL
+   if(price >= emaSlowH1[0]) 
+      sellConditions = false; // Vi phạm điều kiện SELL
    
-   // H1: EMAs aligned (9 < 21 < 50)
-   if(!(emaFastH1[0] < emaMediumH1[0] && emaMediumH1[0] < emaSlowH1[0])) sellConditions = false;
+   // ĐIỀU KIỆN SELL 2: H1 - Các EMA phải sắp xếp theo thứ tự giảm (9 < 21 < 50)
+   // Kiểm tra: EMA 9 H1 phải < EMA 21 H1 và EMA 21 H1 phải < EMA 50 H1
+   if(!(emaFastH1[0] < emaMediumH1[0] && emaMediumH1[0] < emaSlowH1[0])) 
+      sellConditions = false; // Vi phạm điều kiện SELL
    
-   // M5: EMAs aligned (9 < 21 < 50)
-   if(!(emaFast[0] < emaMedium[0] && emaMedium[0] < emaSlow[0])) sellConditions = false;
+   // ĐIỀU KIỆN SELL 3: M5 - Các EMA phải sắp xếp theo thứ tự giảm (9 < 21 < 50)
+   // Kiểm tra: EMA 9 M5 phải < EMA 21 M5 và EMA 21 M5 phải < EMA 50 M5
+   if(!(emaFast[0] < emaMedium[0] && emaMedium[0] < emaSlow[0])) 
+      sellConditions = false; // Vi phạm điều kiện SELL
    
-   // M5: EMA 9 crosses below EMA 21 (check closed bar [0] vs previous [1])
-   // emaFast[0] = closed bar, emaFast[1] = bar before closed bar
-   if(!(emaFast[0] < emaMedium[0] && emaFast[1] >= emaMedium[1])) sellConditions = false;
+   // ĐIỀU KIỆN SELL 4: M5 - EMA 9 phải cắt xuống dưới EMA 21 (tín hiệu bán)
+   // Kiểm tra: EMA 9 hiện tại < EMA 21 hiện tại VÀ EMA 9 nến trước >= EMA 21 nến trước
+   // emaFast[0] = EMA 9 của nến đã đóng, emaFast[1] = EMA 9 của nến trước đó
+   if(!(emaFast[0] < emaMedium[0] && emaFast[1] >= emaMedium[1])) 
+      sellConditions = false; // Vi phạm điều kiện SELL
    
-   // M5: Current candle closes below EMA 9
-   if(price >= emaFast[0]) sellConditions = false;
+   // ĐIỀU KIỆN SELL 5: M5 - Nến đã đóng phải đóng dưới EMA 9
+   // Kiểm tra: Giá đóng cửa phải < EMA 9 M5
+   if(price >= emaFast[0]) 
+      sellConditions = false; // Vi phạm điều kiện SELL
    
-   // M5: Price, EMA 9, and EMA 21 all below EMA 50
-   if(!(price < emaSlow[0] && emaFast[0] < emaSlow[0] && emaMedium[0] < emaSlow[0])) sellConditions = false;
+   // ĐIỀU KIỆN SELL 6: M5 - Giá, EMA 9, và EMA 21 đều phải ở dưới EMA 50
+   // Kiểm tra: Giá < EMA 50 VÀ EMA 9 < EMA 50 VÀ EMA 21 < EMA 50
+   if(!(price < emaSlow[0] && emaFast[0] < emaSlow[0] && emaMedium[0] < emaSlow[0])) 
+      sellConditions = false; // Vi phạm điều kiện SELL
    
-   // M5: RSI < 50
-   if(InpUseRSI && rsi >= InpRSI_SellLevel) sellConditions = false;
+   // ĐIỀU KIỆN SELL 7: M5 - RSI phải < ngưỡng bán (mặc định 50)
+   // Kiểm tra: Nếu bật RSI và RSI >= ngưỡng bán thì không phải tín hiệu SELL
+   if(InpUseRSI && rsi >= InpRSI_SellLevel) 
+      sellConditions = false; // Vi phạm điều kiện SELL
    
-   // M5: EMAs have clear separation
-   if(separation < InpMinEMASeparation) sellConditions = false;
+   // ĐIỀU KIỆN SELL 8: M5 - Các EMA phải có khoảng cách tách biệt rõ ràng
+   // Kiểm tra: Khoảng cách giữa các EMA phải >= khoảng cách tối thiểu
+   // (Sử dụng lại giá trị separation đã tính ở trên)
+   if(separation < InpMinEMASeparation) 
+      sellConditions = false; // Vi phạm điều kiện SELL
    
+   // Nếu tất cả điều kiện SELL đều đúng, trả về tín hiệu SELL
    if(sellConditions)
-      return SIGNAL_SELL;
+      return -1; // Tín hiệu SELL
    
-   return SIGNAL_NONE;
+   // ============================================================
+   // BƯỚC 7: KHÔNG CÓ TÍN HIỆU
+   // ============================================================
+   // Nếu không thỏa mãn điều kiện BUY hoặc SELL, trả về không có tín hiệu
+   return 0; // Không có tín hiệu
+}
+
+//+------------------------------------------------------------------+
+//| Determine signal type (BUY/SELL/NONE) - Wrapper function       |
+//| Sử dụng GetEntrySignal() để lấy tín hiệu                        |
+//+------------------------------------------------------------------+
+ENUM_SIGNAL_TYPE DetermineSignalType(string symbol)
+{
+   // Gọi hàm GetEntrySignal() để lấy tín hiệu
+   int signal = GetEntrySignal(symbol);
+   
+   // Chuyển đổi từ int sang ENUM_SIGNAL_TYPE
+   if(signal == 1)
+      return SIGNAL_BUY;  // Tín hiệu BUY
+   else if(signal == -1)
+      return SIGNAL_SELL; // Tín hiệu SELL
+   else
+      return SIGNAL_NONE; // Không có tín hiệu
 }
 
 //+------------------------------------------------------------------+
@@ -1007,4 +1383,37 @@ double CalculateTakeProfit(string symbol, ENUM_SIGNAL_TYPE signalType, double en
 }
 
 //+------------------------------------------------------------------+
+//| Record trade result in statistics (call manually after trade)   |
+//+------------------------------------------------------------------+
+void RecordTradeResult(string symbol, datetime entryTime, double exitPrice, bool isWin)
+{
+   if(InpEnableStatistics && g_statistics != NULL)
+   {
+      g_statistics.RecordResult(symbol, entryTime, exitPrice, isWin);
+      Print("Trade result recorded: ", symbol, " | Entry: ", TimeToString(entryTime), 
+            " | Exit: ", DoubleToString(exitPrice, 5), " | Result: ", (isWin ? "WIN" : "LOSS"));
+   }
+}
 
+//+------------------------------------------------------------------+
+//| Print current statistics to log                                  |
+//+------------------------------------------------------------------+
+void PrintStatistics()
+{
+   if(InpEnableStatistics && g_statistics != NULL)
+   {
+      Print("\n═══════════════════════════════════════════════════════════");
+      Print("CURRENT STATISTICS REPORT");
+      Print("═══════════════════════════════════════════════════════════");
+      g_statistics.PrintStatistics();
+   }
+   else
+   {
+      Print("Statistics tracking is disabled. Enable InpEnableStatistics to track statistics.");
+   }
+}
+
+//+------------------------------------------------------------------+
+//| End of Expert Advisor                                              |
+//| All code generation complete - EA ready for compilation          |
+//+------------------------------------------------------------------+
