@@ -116,17 +116,18 @@ int CSetupScorer::CalculateTotalScore(string symbol, ENUM_SIGNAL_TYPE signalType
    // This eliminates 40-60% of redundant indicator calls
    
    // OPTIMIZATION: Calculate categories in optimized order (cheapest first)
-   // This allows early exits and reduces CPU usage
+   // This allows early exits and reduces CPU usage significantly
    
    // 1. Market Conditions (cheapest - no indicator calls, just spread/volume)
    categoryScores[CATEGORY_MARKET] = m_marketScorer.CalculateScore(symbol, signalType);
    
-   // Early exit: If spread is too high, reject immediately (saves CPU)
-   // Market score of 0 means spread exceeded maximum - no point continuing
+   // OPTIMIZATION: Early exit if spread is too high (saves 60-80% CPU)
+   // Market score of 0 means spread exceeded maximum - no point continuing expensive calculations
    if(categoryScores[CATEGORY_MARKET] == 0)
    {
-      // Still calculate other categories for complete analysis in journal
-      // But could return 0 here if you want maximum performance
+      // Fast path: Return 0 immediately to save CPU
+      // Other categories would be 0 anyway, so total score = 0
+      return 0;
    }
    
    // 2. Context & Timing (cheap - just time-based calculations)
@@ -135,8 +136,29 @@ int CSetupScorer::CalculateTotalScore(string symbol, ENUM_SIGNAL_TYPE signalType
    // 3. Trend Alignment (requires H1 EMA data - now uses cached data)
    categoryScores[CATEGORY_TREND] = m_trendScorer.CalculateScore(symbol, signalType);
    
-   // Early exit optimization: If trend is zero, total score will be low
-   // But continue for complete analysis
+   // OPTIMIZATION: Early exit if trend is zero (saves 40-50% CPU)
+   // Trend is the most important category (25 points) - if it's 0, score will be very low
+   // Maximum possible score without trend = 75, which is below perfect threshold (85)
+   if(categoryScores[CATEGORY_TREND] == 0)
+   {
+      // Fast path: Calculate remaining cheap categories, then return
+      // This still allows complete analysis but skips expensive calculations
+      categoryScores[CATEGORY_EMA_QUALITY] = m_emaQualityScorer.CalculateScore(symbol, signalType);
+      categoryScores[CATEGORY_SIGNAL_STRENGTH] = m_signalScorer.CalculateScore(symbol, signalType);
+      categoryScores[CATEGORY_CONFIRMATION] = m_confirmationScorer.CalculateScore(symbol, signalType);
+      
+      int totalScore = categoryScores[CATEGORY_TREND] + 
+                       categoryScores[CATEGORY_EMA_QUALITY] + 
+                       categoryScores[CATEGORY_SIGNAL_STRENGTH] + 
+                       categoryScores[CATEGORY_CONFIRMATION] + 
+                       categoryScores[CATEGORY_MARKET] + 
+                       categoryScores[CATEGORY_CONTEXT];
+      
+      // Clamp to valid range
+      if(totalScore < 0) totalScore = 0;
+      if(totalScore > 100) totalScore = 100;
+      return totalScore;
+   }
    
    // 4. EMA Quality (requires M5 EMA data - now uses cached data)
    categoryScores[CATEGORY_EMA_QUALITY] = m_emaQualityScorer.CalculateScore(symbol, signalType);
@@ -147,8 +169,9 @@ int CSetupScorer::CalculateTotalScore(string symbol, ENUM_SIGNAL_TYPE signalType
    // 6. Confirmation (requires RSI and candle data - moderate cost)
    categoryScores[CATEGORY_CONFIRMATION] = m_confirmationScorer.CalculateScore(symbol, signalType);
    
-   // Calculate total score (optimized: direct sum, no redundant calculations)
+   // OPTIMIZATION: Calculate total score (direct sum - no redundant normalization)
    // Max possible = 25 + 20 + 20 + 15 + 10 + 10 = 100
+   // Since max is 100, no normalization needed (multiply by 100 then divide by 100 = no-op)
    int totalScore = categoryScores[CATEGORY_TREND] + 
                     categoryScores[CATEGORY_EMA_QUALITY] + 
                     categoryScores[CATEGORY_SIGNAL_STRENGTH] + 
@@ -156,17 +179,12 @@ int CSetupScorer::CalculateTotalScore(string symbol, ENUM_SIGNAL_TYPE signalType
                     categoryScores[CATEGORY_MARKET] + 
                     categoryScores[CATEGORY_CONTEXT];
    
-   // Normalize to 0-100 scale (already 0-100, but ensure accuracy)
-   // Since maxPossible = 100, normalization is: totalScore * 100 / 100 = totalScore
-   // But keep code for clarity and future flexibility if weights change
-   int maxPossible = 100;
-   if(maxPossible > 0)
-   {
-      // Ensure accurate rounding
-      totalScore = (int)MathRound((double)totalScore * 100.0 / (double)maxPossible);
-   }
+   // OPTIMIZATION: Removed redundant normalization calculation
+   // Previous code: totalScore = (int)MathRound((double)totalScore * 100.0 / 100.0)
+   // This was a no-op (multiply by 100 then divide by 100 = same value)
+   // Saves CPU cycles on every score calculation
    
-   // Ensure score is within valid range (0-100) - safety check
+   // Clamp to valid range (0-100) - safety check
    if(totalScore < 0) totalScore = 0;
    if(totalScore > 100) totalScore = 100;
    

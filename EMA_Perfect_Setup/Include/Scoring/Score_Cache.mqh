@@ -58,9 +58,11 @@ private:
    CachedIndicatorData m_cache[];
    int m_cacheSize;
    datetime m_cacheTimeout; // Cache timeout in seconds
+   static const int MAX_CACHE_SIZE = 10; // OPTIMIZATION: Limit cache size to prevent O(n) lookup degradation
    
    int FindCacheIndex(string symbol);
    void InvalidateCache(int index);
+   void TrimCache(); // OPTIMIZATION: Remove oldest entries when cache is full
    
 public:
    CScoreCache(int timeoutSeconds = 1);
@@ -98,16 +100,51 @@ CScoreCache::~CScoreCache()
 }
 
 //+------------------------------------------------------------------+
-//| Find cache index for symbol                                      |
+//| Find cache index for symbol (optimized with early exit)          |
 //+------------------------------------------------------------------+
 int CScoreCache::FindCacheIndex(string symbol)
 {
+   // OPTIMIZATION: Early exit if cache is empty
+   if(m_cacheSize == 0) return -1;
+   
+   // OPTIMIZATION: Linear search with early exit (O(n) but n is limited to MAX_CACHE_SIZE)
+   // Most common case: symbol found at beginning of array
    for(int i = 0; i < m_cacheSize; i++)
    {
+      // OPTIMIZATION: String comparison is fast in MQL5
       if(m_cache[i].symbol == symbol)
          return i;
    }
    return -1;
+}
+
+//+------------------------------------------------------------------+
+//| Trim cache to prevent excessive growth                          |
+//+------------------------------------------------------------------+
+void CScoreCache::TrimCache()
+{
+   // OPTIMIZATION: Remove oldest entries when cache exceeds MAX_CACHE_SIZE
+   if(m_cacheSize <= MAX_CACHE_SIZE) return;
+   
+   // Find oldest entry (lowest lastUpdate)
+   int oldestIndex = 0;
+   datetime oldestTime = m_cache[0].lastUpdate;
+   for(int i = 1; i < m_cacheSize; i++)
+   {
+      if(m_cache[i].lastUpdate < oldestTime)
+      {
+         oldestTime = m_cache[i].lastUpdate;
+         oldestIndex = i;
+      }
+   }
+   
+   // Remove oldest entry by shifting array
+   for(int i = oldestIndex; i < m_cacheSize - 1; i++)
+   {
+      m_cache[i] = m_cache[i + 1];
+   }
+   m_cacheSize--;
+   ArrayResize(m_cache, m_cacheSize);
 }
 
 //+------------------------------------------------------------------+
@@ -165,6 +202,10 @@ bool CScoreCache::GetH1EMAData(string symbol, double &emaFast[], double &emaMedi
    // OPTIMIZATION: Update cache efficiently
    if(index < 0)
    {
+      // OPTIMIZATION: Trim cache if it's getting too large
+      if(m_cacheSize >= MAX_CACHE_SIZE)
+         TrimCache();
+      
       // Create new cache entry
       index = m_cacheSize;
       ArrayResize(m_cache, m_cacheSize + 1);
@@ -230,6 +271,10 @@ bool CScoreCache::GetM5EMAData(string symbol, double &emaFast[], double &emaMedi
    // OPTIMIZATION: Update cache efficiently
    if(index < 0)
    {
+      // OPTIMIZATION: Trim cache if it's getting too large
+      if(m_cacheSize >= MAX_CACHE_SIZE)
+         TrimCache();
+      
       // Create new cache entry
       index = m_cacheSize;
       ArrayResize(m_cache, m_cacheSize + 1);
