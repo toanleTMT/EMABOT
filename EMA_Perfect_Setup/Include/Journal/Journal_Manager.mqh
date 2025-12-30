@@ -150,20 +150,29 @@ void CJournalManager::LogPerfectSignal(string symbol, datetime time, int score,
                                        double entryPrice, double sl, double tp1, double tp2,
                                        string strengths, string weaknesses)
 {
-   string logText = "";
-   logText += FormatDate(time) + " " + FormatDateTime(time) + " | " + symbol + " | M5\n";
-   logText += "Score: " + IntegerToString(score) + "/100 🟢 PERFECT\n";
-   logText += "Type: " + GetSignalTypeString(signalType) + " Signal\n";
-   logText += "Entry: " + FormatPrice(symbol, entryPrice) + " | SL: " + FormatPrice(symbol, sl);
-   logText += " | TP1: " + FormatPrice(symbol, tp1) + " | TP2: " + FormatPrice(symbol, tp2) + "\n\n";
+   // OPTIMIZATION: Pre-format strings once to avoid repeated function calls
+   string dateStr = FormatDate(time);
+   string timeStr = FormatDateTime(time);
+   string typeStr = GetSignalTypeString(signalType);
+   string entryStr = FormatPrice(symbol, entryPrice);
+   string slStr = FormatPrice(symbol, sl);
+   string tp1Str = FormatPrice(symbol, tp1);
+   string tp2Str = FormatPrice(symbol, tp2);
+   
+   // OPTIMIZATION: Use StringFormat for better performance with multiple concatenations
+   string logText = StringFormat("%s %s | %s | M5\n", dateStr, timeStr, symbol);
+   logText += StringFormat("Score: %d/100 🟢 PERFECT\n", score);
+   logText += StringFormat("Type: %s Signal\n", typeStr);
+   logText += StringFormat("Entry: %s | SL: %s | TP1: %s | TP2: %s\n\n", 
+                          entryStr, slStr, tp1Str, tp2Str);
    
    logText += "CATEGORY SCORES:\n";
-   logText += "- Trend: " + IntegerToString(categoryScores[CATEGORY_TREND]) + "/25\n";
-   logText += "- EMA Quality: " + IntegerToString(categoryScores[CATEGORY_EMA_QUALITY]) + "/20\n";
-   logText += "- Signal: " + IntegerToString(categoryScores[CATEGORY_SIGNAL_STRENGTH]) + "/20\n";
-   logText += "- Confirmation: " + IntegerToString(categoryScores[CATEGORY_CONFIRMATION]) + "/15\n";
-   logText += "- Market: " + IntegerToString(categoryScores[CATEGORY_MARKET]) + "/10\n";
-   logText += "- Context: " + IntegerToString(categoryScores[CATEGORY_CONTEXT]) + "/10\n\n";
+   logText += StringFormat("- Trend: %d/25\n", categoryScores[CATEGORY_TREND]);
+   logText += StringFormat("- EMA Quality: %d/20\n", categoryScores[CATEGORY_EMA_QUALITY]);
+   logText += StringFormat("- Signal: %d/20\n", categoryScores[CATEGORY_SIGNAL_STRENGTH]);
+   logText += StringFormat("- Confirmation: %d/15\n", categoryScores[CATEGORY_CONFIRMATION]);
+   logText += StringFormat("- Market: %d/10\n", categoryScores[CATEGORY_MARKET]);
+   logText += StringFormat("- Context: %d/10\n\n", categoryScores[CATEGORY_CONTEXT]);
    
    if(StringLen(strengths) > 0)
    {
@@ -242,24 +251,29 @@ void CJournalManager::LogPerfectSignal(string symbol, datetime time, int score,
 void CJournalManager::LogRejectedSignal(string symbol, datetime time, int score,
                                         int categoryScores[], string reason)
 {
-   string logText = "";
-   logText += FormatDate(time) + " " + FormatDateTime(time) + " | " + symbol + " | M5\n";
-   logText += "Score: " + FormatScore(score) + " - CORRECTLY SKIPPED\n";
+   // OPTIMIZATION: Pre-format strings once
+   string dateStr = FormatDate(time);
+   string timeStr = FormatDateTime(time);
+   string scoreStr = FormatScore(score);
+   
+   // OPTIMIZATION: Use StringFormat for better performance
+   string logText = StringFormat("%s %s | %s | M5\n", dateStr, timeStr, symbol);
+   logText += StringFormat("Score: %s - CORRECTLY SKIPPED\n", scoreStr);
    
    // Add category scores breakdown (if available)
    if(categoryScores != NULL && ArraySize(categoryScores) >= TOTAL_CATEGORIES)
    {
       logText += "CATEGORY SCORES:\n";
-      logText += "- Trend: " + IntegerToString(categoryScores[CATEGORY_TREND]) + "/25\n";
-      logText += "- EMA Quality: " + IntegerToString(categoryScores[CATEGORY_EMA_QUALITY]) + "/20\n";
-      logText += "- Signal: " + IntegerToString(categoryScores[CATEGORY_SIGNAL_STRENGTH]) + "/20\n";
-      logText += "- Confirmation: " + IntegerToString(categoryScores[CATEGORY_CONFIRMATION]) + "/15\n";
-      logText += "- Market: " + IntegerToString(categoryScores[CATEGORY_MARKET]) + "/10\n";
-      logText += "- Context: " + IntegerToString(categoryScores[CATEGORY_CONTEXT]) + "/10\n\n";
+      logText += StringFormat("- Trend: %d/25\n", categoryScores[CATEGORY_TREND]);
+      logText += StringFormat("- EMA Quality: %d/20\n", categoryScores[CATEGORY_EMA_QUALITY]);
+      logText += StringFormat("- Signal: %d/20\n", categoryScores[CATEGORY_SIGNAL_STRENGTH]);
+      logText += StringFormat("- Confirmation: %d/15\n", categoryScores[CATEGORY_CONFIRMATION]);
+      logText += StringFormat("- Market: %d/10\n", categoryScores[CATEGORY_MARKET]);
+      logText += StringFormat("- Context: %d/10\n\n", categoryScores[CATEGORY_CONTEXT]);
    }
    else
    {
-      logText += "Score: " + IntegerToString(score) + "/100\n\n";
+      logText += StringFormat("Score: %d/100\n\n", score);
    }
    
    logText += "WHY REJECTED:\n" + reason + "\n";

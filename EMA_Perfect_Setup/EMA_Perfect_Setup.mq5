@@ -422,6 +422,9 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTimer()
 {
+   // OPTIMIZATION: Cache TimeCurrent() once per timer cycle
+   datetime currentTime = TimeCurrent();
+   
    // Check if new day
    if(IsNewDay(g_lastDayCheck))
    {
@@ -456,8 +459,11 @@ void OnTimer()
       {
          if(InpLogRejectedSetups && InpEnableJournal && g_journal != NULL)
          {
-            string reason = "Spread too high: " + FormatPips(spread) + " (max: " + FormatPips(InpMaxSpread) + ")";
-            g_journal.LogRejectedSignal(symbol, TimeCurrent(), 0, reason);
+            // OPTIMIZATION: Use StringFormat for better performance
+            string spreadStr = FormatPips(spread);
+            string maxSpreadStr = FormatPips(InpMaxSpread);
+            string reason = StringFormat("Spread too high: %s (max: %s)", spreadStr, maxSpreadStr);
+            g_journal.LogRejectedSignal(symbol, currentTime, 0, reason);
          }
          continue;
       }
@@ -481,14 +487,19 @@ void OnTimer()
       
       if(!isValidSignal)
       {
+         // OPTIMIZATION: Get validation errors once and reuse
+         string errors = "";
+         if(InpEnableDebug && g_debug != NULL || (InpLogRejectedSetups && InpEnableJournal && g_journal != NULL))
+         {
+            errors = g_validator.GetValidationErrors(symbol, signalType);
+         }
+         
          if(InpEnableDebug && g_debug != NULL)
          {
-            string errors = g_validator.GetValidationErrors(symbol, signalType);
             g_debug.Log("Signal validation failed for " + symbol + ": " + errors);
          }
          if(InpLogRejectedSetups && InpEnableJournal && g_journal != NULL)
          {
-            string errors = g_validator.GetValidationErrors(symbol, signalType);
             g_journal.LogRejectedSignal(symbol, currentBarTime, 0, "Validation failed: " + errors);
          }
          continue;
@@ -527,16 +538,17 @@ void OnTimer()
          string strengths = "";
          string weaknesses = "";
          
-         // Parse analysis to extract strengths and weaknesses
+         // OPTIMIZATION: Parse analysis efficiently - cache StringFind results
          // Format: "STRENGTHS:\n...\nMINOR WEAKNESSES:\n..." or just strengths
-         if(StringFind(analysis, "STRENGTHS:") >= 0)
+         int strengthsPos = StringFind(analysis, "STRENGTHS:");
+         if(strengthsPos >= 0)
          {
-            int strengthsStart = StringFind(analysis, "STRENGTHS:") + 10;
-            int weaknessesStart = StringFind(analysis, "MINOR WEAKNESSES:");
-            if(weaknessesStart >= 0)
+            int strengthsStart = strengthsPos + 10; // "STRENGTHS:" = 10 chars
+            int weaknessesPos = StringFind(analysis, "MINOR WEAKNESSES:");
+            if(weaknessesPos >= 0)
             {
-               strengths = StringSubstr(analysis, strengthsStart, weaknessesStart - strengthsStart);
-               weaknesses = StringSubstr(analysis, weaknessesStart + 17); // "MINOR WEAKNESSES:" = 17 chars
+               strengths = StringSubstr(analysis, strengthsStart, weaknessesPos - strengthsStart);
+               weaknesses = StringSubstr(analysis, weaknessesPos + 17); // "MINOR WEAKNESSES:" = 17 chars
             }
             else
             {
@@ -567,9 +579,9 @@ void OnTimer()
             g_dashboard.Flash(InpBuyColor, 5000);
          }
          
+         // OPTIMIZATION: Panel update doesn't need breakdown string (it generates internally)
          if(InpShowBreakdownPanel && g_panelManager != NULL)
          {
-            string breakdown = g_scorer.GetScoreBreakdown(symbol, signalType, categoryScores);
             g_panelManager.Update(symbol, signalType, categoryScores, g_scorer);
          }
          
@@ -608,7 +620,8 @@ void OnTimer()
          
          if(InpEnableJournal && g_journal != NULL)
          {
-            string reason = "GOOD but below threshold (score: " + IntegerToString(totalScore) + ")";
+            // OPTIMIZATION: Use StringFormat for better performance
+            string reason = StringFormat("GOOD but below threshold (score: %d)", totalScore);
             g_journal.LogRejectedSignal(symbol, currentBarTime, totalScore, categoryScores, reason);
          }
       }
@@ -623,7 +636,8 @@ void OnTimer()
          
          if(InpEnableJournal && InpLogRejectedSetups && g_journal != NULL)
          {
-            string reason = "WEAK setup (score: " + IntegerToString(totalScore) + ")";
+            // OPTIMIZATION: Use StringFormat for better performance
+            string reason = StringFormat("WEAK setup (score: %d)", totalScore);
             g_journal.LogRejectedSignal(symbol, currentBarTime, totalScore, categoryScores, reason);
          }
       }
